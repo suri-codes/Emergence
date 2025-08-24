@@ -1,3 +1,5 @@
+use egui_graphs::{DefaultGraphView, Graph, GraphView};
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
@@ -7,14 +9,31 @@ pub struct EmergenecApp {
 
     #[serde(skip)] // This how you opt-out of serialization of a field
     value: f32,
+
+    graph: Graph,
 }
 
+fn generate_graph() -> petgraph::stable_graph::StableGraph<(), ()> {
+    let mut g = petgraph::stable_graph::StableGraph::new();
+
+    let a = g.add_node(());
+    let b = g.add_node(());
+    let c = g.add_node(());
+
+    g.add_edge(a, b, ());
+    g.add_edge(b, c, ());
+    g.add_edge(c, a, ());
+
+    g
+}
 impl Default for EmergenecApp {
     fn default() -> Self {
+        let g = generate_graph();
         Self {
             // Example stuff:
             label: "Hello World!".to_owned(),
             value: 2.7,
+            graph: Graph::from(&g),
         }
     }
 }
@@ -79,6 +98,9 @@ impl eframe::App for EmergenecApp {
                 self.value += 1.0;
             }
 
+            ui.separator();
+
+            ui.add(&mut DefaultGraphView::new(&mut self.graph));
             ui.separator();
 
             ui.add(egui::github_link_file!(
