@@ -49,7 +49,3 @@ Currently Im thinking of maybe a server / client tui
 
 - [template link](https://github.com/IWANABETHATGUY/tower-lsp-boilerplate)
 - [ ] given a root workspace provide lsp for various thingies
-
-
-
-
