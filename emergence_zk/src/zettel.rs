@@ -1,8 +1,4 @@
-use std::{
-    fmt::Display,
-    fs::{File, OpenOptions, read_to_string},
-    path::PathBuf,
-};
+use std::{fmt::Display, fs::OpenOptions, path::PathBuf};
 
 use chrono::Local;
 use nanoid::nanoid;
@@ -47,10 +43,10 @@ impl TryFrom<PathBuf> for Zettel {
 
         let id: ZettelId = value
             .file_name()
-            .ok_or(ZkError::ParseError("Invalid File Name!"))?
+            .ok_or(ZkError::ParseError("Invalid File Name!".to_owned()))?
             .to_str()
             .ok_or(ZkError::ParseError(
-                "File Name cannot be translated into str!",
+                "File Name cannot be translated into str!".to_owned(),
             ))?
             .into();
 

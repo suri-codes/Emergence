@@ -6,6 +6,6 @@ pub enum ZkError {
     #[error("File error: ")]
     FileError(#[from] io::Error),
 
-    #[error("Parse Failure: ")]
-    ParseError(&'static str),
+    #[error("Parse Failure")]
+    ParseError(String),
 }

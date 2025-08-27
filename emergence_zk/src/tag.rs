@@ -14,7 +14,7 @@ impl Tag {
         let name = name.to_lowercase();
 
         if !name.is_ascii() {
-            return Err(ZkError::ParseError("Name isn't valid ascii!"));
+            return Err(ZkError::ParseError("Name isn't valid ascii!".to_owned()));
         }
 
         //TODO: color validation or something
