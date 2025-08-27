@@ -49,3 +49,45 @@ Currently Im thinking of maybe a server / client tui
 
 - [template link](https://github.com/IWANABETHATGUY/tower-lsp-boilerplate)
 - [ ] given a root workspace provide lsp for various thingies
+
+
+
+
+## zettelkasten notes
+
+Ideally you only have one zettelkasten, maybe we can use that to our advantage
+
+
+
+each note should have a fixed address
+
+tags
+
+it is personal
+
+each zettelkasten only contains one unit of knowledge and one only
+
+
+## the id of a zettelkasten:
+
+- random
+ seems like the simplest answer
+- time based
+  this could be interesting, but im also planning on using git to show the progression of the zettel, so not sure
+  how useful this would be
+- name
+err
+
+## body
+The body of the zettel contains the piece of knowledge you want to capture, make sure you write
+it in your own words
+
+## references
+how do we want to deal with these.
+usually just bibtext entries
+i think its fine if we just put that shi into the thang
+maybe in the future we can do our own bibtext stuff
+
+
+
+

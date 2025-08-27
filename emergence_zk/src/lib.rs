@@ -2,22 +2,11 @@ mod zettel;
 pub use zettel::*;
 
 mod error;
+mod frontmatter;
+mod tag;
 
 pub use error::*;
+pub use frontmatter::*;
+pub use tag::*;
 
 pub type ZkResult<T> = Result<T, ZkError>;
-
-// pub fn add(left: u64, right: u64) -> u64 {
-//     left + right
-// }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[test]
-//     fn it_works() {
-//         let result = add(2, 2);
-//         assert_eq!(result, 4);
-//     }
-// }
