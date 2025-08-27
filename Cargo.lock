@@ -928,6 +928,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "emergence_cli"
+version = "0.1.0"
+
+[[package]]
 name = "emergence_lsp"
 version = "0.1.0"
 

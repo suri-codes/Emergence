@@ -32,7 +32,7 @@ impl Display for ZettelId {
 pub struct Zettel {
     path: PathBuf,
     id: ZettelId,
-    front_matter: FrontMatter,
+    meta: FrontMatter,
     content: String,
 }
 
@@ -53,7 +53,7 @@ impl TryFrom<PathBuf> for Zettel {
         Ok(Zettel {
             path: value,
             id,
-            front_matter,
+            meta: front_matter,
             content,
         })
     }
@@ -78,19 +78,19 @@ impl ZettelBuilder {
             inner: Zettel {
                 id,
                 path: zettel_path,
-                front_matter,
+                meta: front_matter,
                 content: "".to_owned(),
             },
         }
     }
 
     pub fn name(mut self, name: String) -> Self {
-        self.inner.front_matter.name = name;
+        self.inner.meta.name = name;
         self
     }
 
     pub fn add_tag(mut self, tag: Tag) -> Self {
-        self.inner.front_matter.tags.push(tag);
+        self.inner.meta.tags.push(tag);
         self
     }
 
@@ -103,8 +103,8 @@ impl ZettelBuilder {
     pub fn build(mut self) -> ZkResult<Zettel> {
         let now = Local::now().naive_local();
 
-        // set created at to build time
-        self.inner.front_matter.created_at = now;
+        // set created_at to build time
+        self.inner.meta.created_at = now;
 
         OpenOptions::new()
             .create_new(true)

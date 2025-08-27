@@ -29,7 +29,6 @@ impl FrontMatter {
     /// #penis{#ffffff} #barber{#000000}
     /// ---
     /// ```
-
     pub fn extract_from_file(path: &PathBuf) -> ZkResult<(Self, String)> {
         let string = fs::read_to_string(path)?;
         Self::extract_from_str(&string)
