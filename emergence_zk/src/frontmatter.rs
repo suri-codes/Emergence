@@ -19,21 +19,34 @@ impl FrontMatter {
             tags,
         }
     }
+
+    /// Reads in file and returns the front matter as well as the content after it.
+    /// expected format for front matter as follows
+    ///```md
+    /// ---
+    /// Name: LOL
+    /// Date: 2025-01-01 12:50:19 AM
+    /// #penis{#ffffff} #barber{#000000}
+    /// ---
+    /// ```
+
     pub fn extract_from_file(path: &PathBuf) -> ZkResult<(Self, String)> {
         let string = fs::read_to_string(path)?;
         Self::extract_from_str(&string)
     }
 
+    /// Returns the front matter as well as the content after it.
+    /// expected format for front matter as follows
+    ///```md
+    /// ---
+    /// Name: LOL
+    /// Date: 2025-01-01 12:50:19 AM
+    /// #penis{#ffffff} #barber{#000000}
+    /// ---
+    /// ```
     pub fn extract_from_str(string: &str) -> ZkResult<(Self, String)> {
         // we just want to strictly match this, else we error
-        // ---
-        // Name: LOL
-        // Date: 2025-01-01 12:50:19 AM
         //
-        // #penis{#ffffff} #barber{#000000}
-        // ---
-        //
-
         let lines: Vec<_> = string.lines().collect();
 
         let delim_check = |line_number: usize| -> ZkResult<()> {
@@ -74,7 +87,7 @@ impl FrontMatter {
             .map_err(|err| ZkError::ParseError(err.to_string()))?;
 
         let tags: Vec<Tag> = lines
-            .get(4)
+            .get(3)
             .ok_or_else(|| ZkError::ParseError("Tag line doesn't exist!".to_owned()))?
             .split_whitespace()
             .map(|tag_str| {
@@ -87,9 +100,9 @@ impl FrontMatter {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        delim_check(5)?;
+        delim_check(4)?;
 
-        let remaining = lines[6..].join("\n");
+        let remaining = lines[5..].join("\n");
 
         Ok((FrontMatter::new(name, created_at, tags), remaining))
     }
@@ -122,7 +135,6 @@ mod tests {
             r#"---            
 Name: LOL
 Date: 2025-01-01 12:50:19 AM
-
 #penis{#ffffff} #barber{#000000}
 ---
 "#,
