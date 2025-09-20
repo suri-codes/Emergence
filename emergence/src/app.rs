@@ -1,4 +1,5 @@
-use egui_graphs::{DefaultGraphView, Graph};
+use egui_graphs::{Graph, GraphView};
+use petgraph::Undirected;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -10,11 +11,13 @@ pub struct EmergenecApp {
     #[serde(skip)] // This how you opt-out of serialization of a field
     value: f32,
 
-    graph: Graph,
+    graph: Graph<(), (), Undirected>,
 }
 
-fn generate_graph() -> petgraph::stable_graph::StableGraph<(), ()> {
-    let mut g = petgraph::stable_graph::StableGraph::new();
+type MyGraph = petgraph::stable_graph::StableUnGraph<(), ()>;
+
+fn generate_graph() -> MyGraph {
+    let mut g = petgraph::stable_graph::StableUnGraph::with_capacity(10_000, 10_000);
 
     let a = g.add_node(());
     let b = g.add_node(());
@@ -26,6 +29,7 @@ fn generate_graph() -> petgraph::stable_graph::StableGraph<(), ()> {
 
     g
 }
+
 impl Default for EmergenecApp {
     fn default() -> Self {
         let g = generate_graph();
@@ -100,7 +104,9 @@ impl eframe::App for EmergenecApp {
 
             ui.separator();
 
-            ui.add(&mut DefaultGraphView::new(&mut self.graph));
+            let mut graph_view = GraphView::<_, _, Undirected>::new(&mut self.graph);
+
+            ui.add(&mut graph_view);
             ui.separator();
 
             ui.add(egui::github_link_file!(

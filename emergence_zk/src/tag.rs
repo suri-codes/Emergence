@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{ZkError, ZkResult};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Tag {
     name: String,
     //TODO: make this actually something
@@ -29,6 +29,6 @@ impl Tag {
 
 impl Display for Tag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{}", self.name)
+        write!(f, "${}{{#{}}}", self.name, self.color)
     }
 }

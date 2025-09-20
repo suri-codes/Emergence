@@ -930,6 +930,9 @@ dependencies = [
 [[package]]
 name = "emergence_cli"
 version = "0.1.0"
+dependencies = [
+ "emergence_zk",
+]
 
 [[package]]
 name = "emergence_lsp"
@@ -942,6 +945,7 @@ dependencies = [
  "chrono",
  "lazy_static",
  "nanoid",
+ "petgraph",
  "thiserror 2.0.16",
 ]
 

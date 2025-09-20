@@ -4,7 +4,7 @@ use chrono::NaiveDateTime;
 
 use crate::{Tag, ZkError, ZkResult};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct FrontMatter {
     pub name: String,
     pub created_at: NaiveDateTime,
@@ -12,9 +12,9 @@ pub struct FrontMatter {
 }
 
 impl FrontMatter {
-    pub fn new(name: &str, created_at: NaiveDateTime, tags: Vec<Tag>) -> Self {
+    pub fn new(name: impl Into<String>, created_at: NaiveDateTime, tags: Vec<Tag>) -> Self {
         FrontMatter {
-            name: name.to_owned(),
+            name: name.into(),
             created_at,
             tags,
         }
@@ -43,9 +43,10 @@ impl FrontMatter {
     /// #penis{#ffffff} #barber{#000000}
     /// ---
     /// ```
-    pub fn extract_from_str(string: &str) -> ZkResult<(Self, String)> {
+    pub fn extract_from_str(string: impl Into<String>) -> ZkResult<(Self, String)> {
+        let string: String = string.into();
         // we just want to strictly match this, else we error
-        //
+
         let lines: Vec<_> = string.lines().collect();
 
         let delim_check = |line_number: usize| -> ZkResult<()> {
@@ -114,10 +115,10 @@ impl Display for FrontMatter {
         writeln!(f, "Date: {}", self.created_at)?;
 
         for tag in &self.tags {
-            write!(f, "#{} ", tag)?;
+            write!(f, "{} ", tag)?;
         }
 
-        writeln!(f, "---")
+        writeln!(f, "\n---")
     }
 }
 
@@ -134,7 +135,7 @@ mod tests {
             r#"---            
 Name: LOL
 Date: 2025-01-01 12:50:19 AM
-#penis{#ffffff} #barber{#000000}
+$whoa{#ffffff} $barber{#000000}
 ---
 "#,
             (
@@ -143,7 +144,7 @@ Date: 2025-01-01 12:50:19 AM
                     NaiveDateTime::parse_from_str("2025-01-01 12:50:19 AM", "%Y-%m-%d %I:%M:%S %p")
                         .unwrap(),
                     vec![
-                        Tag::new("penis", "#ffffff").unwrap(),
+                        Tag::new("whoa", "#ffffff").unwrap(),
                         Tag::new("barber", "#000000").unwrap(),
                     ],
                 ),
@@ -156,7 +157,7 @@ Date: 2025-01-01 12:50:19 AM
     fn test_extract_from_string() {
         for (raw_text, (front_matter, remaining)) in test_suite.iter() {
             let (extracted_front_matter, extracted_remaining) =
-                FrontMatter::extract_from_str(raw_text).unwrap();
+                FrontMatter::extract_from_str(*raw_text).unwrap();
 
             assert_eq!(extracted_front_matter, *front_matter);
             assert_eq!(extracted_remaining, *remaining);

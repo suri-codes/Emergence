@@ -1,10 +1,11 @@
-use std::{fmt::Display, fs::OpenOptions, path::PathBuf};
+use std::{fmt::Display, fs::OpenOptions, io::Write, path::PathBuf};
 
 use chrono::Local;
 use nanoid::nanoid;
 
 use crate::{FrontMatter, Tag, ZkError, ZkResult};
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct ZettelId(String);
 
 impl ZettelId {
@@ -29,6 +30,7 @@ impl Display for ZettelId {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Zettel {
     path: PathBuf,
     id: ZettelId,
@@ -68,7 +70,7 @@ impl ZettelBuilder {
         let id = ZettelId::new();
 
         let zettel_path = {
-            project_root.push(id.as_str());
+            project_root.push([id.as_str(), ".md"].join(""));
             project_root
         };
 
@@ -84,8 +86,8 @@ impl ZettelBuilder {
         }
     }
 
-    pub fn name(mut self, name: String) -> Self {
-        self.inner.meta.name = name;
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.inner.meta.name = name.into();
         self
     }
 
@@ -94,8 +96,8 @@ impl ZettelBuilder {
         self
     }
 
-    pub fn content(mut self, content: String) -> Self {
-        self.inner.content = content;
+    pub fn content(mut self, content: impl Into<String>) -> Self {
+        self.inner.content = content.into();
 
         self
     }
@@ -106,11 +108,14 @@ impl ZettelBuilder {
         // set created_at to build time
         self.inner.meta.created_at = now;
 
-        OpenOptions::new()
+        let mut f = OpenOptions::new()
             .create_new(true)
-            .write(true)
             .read(true)
+            .append(true)
             .open(&self.inner.path)?;
+
+        writeln!(f, "{}", self.inner.meta)?;
+        writeln!(f, "{}", self.inner.content)?;
 
         Ok(self.inner)
     }
