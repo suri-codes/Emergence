@@ -18,8 +18,6 @@ struct Kasten {
 
 impl Kasten {
     fn generate(root: PathBuf) -> Self {
-
-        
         todo!()
     }
 

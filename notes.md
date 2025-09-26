@@ -31,6 +31,8 @@ Currently Im thinking of maybe a server / client tui
   make a helix plugin. That way you can plug emergence into
   any editor.
 
+- Ipad drawings / notes integration? Sometimes you just cant type
+everything...
 # crates
 
 ## emergence_zk
