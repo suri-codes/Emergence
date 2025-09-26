@@ -5,10 +5,11 @@ use std::{
 };
 
 use chrono::Local;
+use serde::{Deserialize, Serialize};
 
 use crate::{FrontMatter, Tag, ZettelId, ZkError, ZkResult};
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct Zettel {
     pub path: PathBuf,
     pub id: ZettelId,
@@ -38,7 +39,7 @@ pub struct ZettelBuilder {
 
 impl ZettelBuilder {
     pub fn new(mut project_root: PathBuf) -> Self {
-        let id = ZettelId::new();
+        let id = ZettelId::default();
 
         let zettel_path = {
             project_root.push([id.as_str(), ".md"].join(""));

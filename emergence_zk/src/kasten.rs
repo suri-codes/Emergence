@@ -5,7 +5,7 @@ use std::{
     sync::RwLock,
 };
 
-use petgraph::{adj::NodeIndex, prelude::StableUnGraph};
+use petgraph::prelude::StableUnGraph;
 use pulldown_cmark::{Event, Parser, Tag as MkTag};
 
 use crate::{Link, Zettel, ZkError, ZkResult};
@@ -14,14 +14,16 @@ use crate::{Link, Zettel, ZkError, ZkResult};
 
 pub type ZkGraph = StableUnGraph<Zettel, Link>;
 
-struct Kasten {
-    pub graph: RwLock<ZkGraph>,
-    root: PathBuf,
+#[derive(Debug)]
+pub struct Kasten {
+    pub graph: ZkGraph,
+    _root: PathBuf,
 }
 
 impl Kasten {
     //TODO: Parallelize the shit out of this dawg
-    fn generate(root: PathBuf) -> ZkResult<Self> {
+    pub fn generate(root: impl Into<PathBuf>) -> ZkResult<Self> {
+        let root = root.into();
         let mut valid_zettels = Vec::new();
 
         let mut path_to_zid = HashMap::new();
@@ -68,9 +70,21 @@ impl Kasten {
 
             for event in parsed {
                 if let Event::Start(MkTag::Link { dest_url, .. }) = event {
-                    let canon_url = match PathBuf::from(dest_url.to_string()).canonicalize() {
-                        Ok(canon_url) => canon_url,
-                        Err(_) => continue,
+                    println!("Found dest_url: {dest_url:#?}");
+                    let dest_path = {
+                        let mut tmp_root = root.clone();
+                        tmp_root.push(dest_url.into_string());
+                        tmp_root
+                    };
+                    let canon_url = match dest_path.canonicalize() {
+                        Ok(canon_url) => {
+                            println!("Found canon url: {canon_url:#?}");
+
+                            canon_url
+                        }
+                        Err(_) => {
+                            continue;
+                        }
                     };
 
                     if let Some(dest_zid) = path_to_zid.get(&canon_url) {
@@ -86,8 +100,8 @@ impl Kasten {
         }
 
         let kasten = Kasten {
-            graph: RwLock::new(graph),
-            root,
+            graph: graph,
+            _root: root,
         };
 
         Ok(kasten)

@@ -1,19 +1,22 @@
 use std::{fmt::Display, path::Path};
 
 use nanoid::nanoid;
+use serde::{Deserialize, Serialize};
 
 use crate::ZkError;
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Serialize, Deserialize)]
 pub struct ZettelId(String);
 
 impl ZettelId {
-    pub fn new() -> Self {
-        ZettelId(nanoid!())
-    }
-
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl Default for ZettelId {
+    fn default() -> Self {
+        ZettelId(nanoid!())
     }
 }
 

@@ -1,7 +1,8 @@
-use std::path::{Path, PathBuf};
+use serde::{Deserialize, Serialize};
 
-use crate::{ZettelId, ZkError};
+use crate::ZettelId;
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Link {
     pub source: ZettelId,
     pub dest: ZettelId,

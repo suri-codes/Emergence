@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 emergence_zk = {path="../emergence_zk"}
+serde = "1.0.227"
 
 [lints]
 workspace = true

@@ -1,12 +1,13 @@
 use std::{fmt::Display, fs, path::Path};
 
 use chrono::{NaiveDateTime, format::StrftimeItems};
+use serde::{Deserialize, Serialize};
 
 use crate::{Tag, ZkError, ZkResult};
 
 const DATE_FMT_STR: &str = "%Y-%m-%d %I:%M:%S %p";
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct FrontMatter {
     pub name: String,
     pub created_at: NaiveDateTime,

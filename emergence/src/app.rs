@@ -1,4 +1,5 @@
 use egui_graphs::{Graph, GraphView};
+use emergence_zk::{Kasten, Link, Zettel, ZkGraph};
 use petgraph::Undirected;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -11,33 +12,21 @@ pub struct EmergenecApp {
     #[serde(skip)] // This how you opt-out of serialization of a field
     value: f32,
 
-    graph: Graph<(), (), Undirected>,
+    graph: EmerGraph,
 }
 
-type MyGraph = petgraph::stable_graph::StableUnGraph<(), ()>;
-
-fn generate_graph() -> MyGraph {
-    let mut g = petgraph::stable_graph::StableUnGraph::with_capacity(10_000, 10_000);
-
-    let a = g.add_node(());
-    let b = g.add_node(());
-    let c = g.add_node(());
-
-    g.add_edge(a, b, ());
-    g.add_edge(b, c, ());
-    g.add_edge(c, a, ());
-
-    g
-}
+type EmerGraph = Graph<Zettel, Link, Undirected>;
 
 impl Default for EmergenecApp {
     fn default() -> Self {
-        let g = generate_graph();
+        let graph = Kasten::generate("./test").expect("what da hell");
+
+        // let g = generate_graph();
         Self {
             // Example stuff:
             label: "Hello World!".to_owned(),
             value: 2.7,
-            graph: Graph::from(&g),
+            graph: EmerGraph::from(&graph.graph),
         }
     }
 }
