@@ -1,25 +1,17 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{ZettelId, ZkError};
 
 pub struct Link {
-    source: ZettelId,
-    dest: ZettelId,
+    pub source: ZettelId,
+    pub dest: ZettelId,
 }
 
 impl Link {
-    pub fn new(source: ZettelId, dest: ZettelId) -> Self {
-        Self { source, dest }
-    }
-}
-
-impl TryFrom<&PathBuf> for Link {
-    type Error = ZkError;
-
-    fn try_from(value: &PathBuf) -> Result<Self, Self::Error> {
-        let source_id: ZettelId = value.try_into()?;
-        
-
-        todo!()
+    pub fn new(source: impl Into<ZettelId>, dest: impl Into<ZettelId>) -> Self {
+        Self {
+            source: source.into(),
+            dest: dest.into(),
+        }
     }
 }

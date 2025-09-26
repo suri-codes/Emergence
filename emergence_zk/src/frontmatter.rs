@@ -1,8 +1,10 @@
-use std::{fmt::Display, fs, path::PathBuf};
+use std::{fmt::Display, fs, path::Path};
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, format::StrftimeItems};
 
 use crate::{Tag, ZkError, ZkResult};
+
+const DATE_FMT_STR: &str = "%Y-%m-%d %I:%M:%S %p";
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct FrontMatter {
@@ -29,7 +31,7 @@ impl FrontMatter {
     /// #penis{#ffffff} #barber{#000000}
     /// ---
     /// ```
-    pub fn extract_from_file(path: &PathBuf) -> ZkResult<(Self, String)> {
+    pub fn extract_from_file(path: &Path) -> ZkResult<(Self, String)> {
         let string = fs::read_to_string(path)?;
         Self::extract_from_str(&string)
     }
@@ -83,7 +85,7 @@ impl FrontMatter {
             .ok_or(ZkError::ParseError(
                 "Date line doesn't start with \"Date: \" ".to_owned(),
             ))
-            .map(|date_str| NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %I:%M:%S %p"))?
+            .map(|date_str| NaiveDateTime::parse_from_str(date_str, DATE_FMT_STR))?
             .map_err(|err| ZkError::ParseError(err.to_string()))?;
 
         let tags: Vec<Tag> = lines
@@ -110,9 +112,14 @@ impl FrontMatter {
 
 impl Display for FrontMatter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let date_fmt_items = StrftimeItems::new(DATE_FMT_STR);
         writeln!(f, "---")?;
         writeln!(f, "Name: {}", self.name)?;
-        writeln!(f, "Date: {}", self.created_at)?;
+        writeln!(
+            f,
+            "Date: {}",
+            self.created_at.format_with_items(date_fmt_items)
+        )?;
 
         for tag in &self.tags {
             write!(f, "{} ", tag)?;
@@ -128,7 +135,7 @@ mod tests {
 
     use chrono::NaiveDateTime;
 
-    use crate::{FrontMatter, Tag};
+    use crate::{FrontMatter, Tag, frontmatter::DATE_FMT_STR};
 
     lazy_static! {
         static ref test_suite: [(&'static str, (FrontMatter, &'static str)); 1] = [(
@@ -141,8 +148,7 @@ $whoa{#ffffff} $barber{#000000}
             (
                 FrontMatter::new(
                     "LOL",
-                    NaiveDateTime::parse_from_str("2025-01-01 12:50:19 AM", "%Y-%m-%d %I:%M:%S %p")
-                        .unwrap(),
+                    NaiveDateTime::parse_from_str("2025-01-01 12:50:19 AM", DATE_FMT_STR).unwrap(),
                     vec![
                         Tag::new("whoa", "#ffffff").unwrap(),
                         Tag::new("barber", "#000000").unwrap(),
