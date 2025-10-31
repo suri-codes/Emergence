@@ -109,7 +109,6 @@ impl TryFrom<PathBuf> for Kasten {
         }
 
         // now we can see if the zettels link to eachother
-        //
         let mut graph: ZkGraph =
             StableUnGraph::with_capacity(valid_zettels.len(), valid_zettels.len() * 3);
 

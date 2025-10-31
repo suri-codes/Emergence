@@ -29,7 +29,7 @@ impl FrontMatter {
     /// ---
     /// Name: LOL
     /// Date: 2025-01-01 12:50:19 AM
-    /// Tags: #penis{#ffffff} #barber{#000000}
+    /// Tags: #Daily{#ffffff} #barber{#000000}
     /// ---
     /// ```
     pub fn extract_from_file(path: &Path) -> ZkResult<(Self, String)> {
@@ -47,7 +47,7 @@ impl FrontMatter {
     /// ---
     /// Name: LOL
     /// Date: 2025-01-01 12:50:19 AM
-    /// Tags: #penis{#ffffff} #barber{#000000}
+    /// Tags: #Daily{#ffffff} #barber{#000000}
     /// ---
     /// ```
     pub fn extract_from_str(string: impl Into<String>) -> ZkResult<(Self, String)> {

@@ -20,7 +20,8 @@ type EmerGraph = Graph<Zettel, Link, Undirected>;
 
 impl Default for EmergenceApp {
     fn default() -> Self {
-        let kasten = Kasten::parse("./test").expect("what da hell");
+        let kasten =
+            Kasten::parse("./test_kasten").expect("test_kasten missing, try generating it");
 
         let mut graph = EmerGraph::from(&kasten.graph);
 

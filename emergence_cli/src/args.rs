@@ -38,7 +38,7 @@ pub struct NewArgs {
     #[arg(short, long)]
     pub name: Option<String>,
     #[arg(short, long)]
-    pub tags: Option<Vec<String>>,
+    pub tags: Vec<String>,
 }
 
 // #[derive(Subcommand, Debug)]

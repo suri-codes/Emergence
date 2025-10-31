@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ZkError, ZkResult};
 
+//TODO: think about how we want to deal with tags
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Tag {
     name: String,
@@ -12,7 +14,9 @@ pub struct Tag {
 }
 
 impl Tag {
-    pub fn new(name: &str, color: &str) -> ZkResult<Self> {
+    pub fn new(name: impl Into<String>, color: impl Into<String>) -> ZkResult<Self> {
+        let name = name.into();
+        let color = color.into();
         let name = name.to_lowercase();
 
         if !name.is_ascii() {

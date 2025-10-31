@@ -5,7 +5,7 @@ use std::{
 
 use clap::Parser as _;
 use color_eyre::{eyre::Result, owo_colors::OwoColorize as _};
-use emergence_zk::{Kasten, Zettel, ZettelBuilder};
+use emergence_zk::{Kasten, Tag, Zettel, ZettelBuilder};
 
 use crate::args::{CliArgs, Commands};
 
@@ -45,6 +45,10 @@ async fn main() -> Result<()> {
 
             if let Some(name) = args.name {
                 zb.name(name);
+            }
+
+            for tag in args.tags {
+                zb.add_tag(Tag::new(tag, "penis")?);
             }
 
             let z: Zettel = zb.build()?;
