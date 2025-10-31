@@ -1,11 +1,14 @@
-use egui_graphs::{Graph, GraphView};
+use egui::{Color32, Widget};
+use egui_graphs::{
+    FruchtermanReingold, FruchtermanReingoldState, Graph, GraphView, LayoutForceDirected,
+};
 use emergence_zk::{Kasten, Link, Zettel, ZkGraph};
-use petgraph::Undirected;
+use petgraph::{Undirected, graph::NodeIndex};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
-pub struct EmergenecApp {
+pub struct EmergenceApp {
     // Example stuff:
     label: String,
 
@@ -17,21 +20,36 @@ pub struct EmergenecApp {
 
 type EmerGraph = Graph<Zettel, Link, Undirected>;
 
-impl Default for EmergenecApp {
+impl Default for EmergenceApp {
     fn default() -> Self {
-        let graph = Kasten::generate("./test").expect("what da hell");
+        let kasten = Kasten::parse("./test").expect("what da hell");
 
-        // let g = generate_graph();
+        let mut graph = EmerGraph::from(&kasten.graph);
+
+        let node_ids: Vec<_> = graph
+            .nodes_iter()
+            .map(|(idx, _)| idx)
+            .collect::<Vec<NodeIndex>>();
+
+        for (node_idx) in node_ids {
+            let node = graph.node_mut(node_idx).expect("must exist");
+            let zettel = &node.props().payload;
+
+            node.set_label(zettel.meta.name.clone());
+            // this should be soemthing related to the thing
+            node.set_color(Color32::RED);
+        }
+
         Self {
             // Example stuff:
-            label: "Hello World!".to_owned(),
+            label: "Hello orld!".to_owned(),
             value: 2.7,
-            graph: EmerGraph::from(&graph.graph),
+            graph,
         }
     }
 }
 
-impl EmergenecApp {
+impl EmergenceApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
@@ -39,15 +57,17 @@ impl EmergenecApp {
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
-        } else {
-            Default::default()
-        }
+        // if let Some(storage) = cc.storage {
+        //     eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+        // } else {
+        //     Default::default()
+        // }
+        //
+        Default::default()
     }
 }
 
-impl eframe::App for EmergenecApp {
+impl eframe::App for EmergenceApp {
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
@@ -93,9 +113,15 @@ impl eframe::App for EmergenecApp {
 
             ui.separator();
 
-            let mut graph_view = GraphView::<_, _, Undirected>::new(&mut self.graph);
+            // this the really crazy graph view
+            // type L = LayoutForceDirected<FruchtermanReingold>;
+            // type S = FruchtermanReingoldState;
+            // let mut graph_view =
+            //     egui_graphs::GraphView::<_, _, _, _, _, _, S, L>::new(&mut self.graph);
+            let mut graph_view = egui_graphs::GraphView::<_, _, Undirected>::new(&mut self.graph);
 
             ui.add(&mut graph_view);
+
             ui.separator();
 
             ui.add(egui::github_link_file!(

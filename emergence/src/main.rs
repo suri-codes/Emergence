@@ -1,7 +1,7 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use emergence::EmergenecApp;
+use emergence::EmergenceApp;
 
 fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
@@ -20,6 +20,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Emergence",
         native_options,
-        Box::new(|cc| Ok(Box::new(EmergenecApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(EmergenceApp::new(cc)))),
     )
 }

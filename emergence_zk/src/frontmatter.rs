@@ -29,12 +29,16 @@ impl FrontMatter {
     /// ---
     /// Name: LOL
     /// Date: 2025-01-01 12:50:19 AM
-    /// #penis{#ffffff} #barber{#000000}
+    /// Tags: #penis{#ffffff} #barber{#000000}
     /// ---
     /// ```
     pub fn extract_from_file(path: &Path) -> ZkResult<(Self, String)> {
         let string = fs::read_to_string(path)?;
-        Self::extract_from_str(&string)
+        Self::extract_from_str(&string).map_err(|e| {
+            ZkError::ParseError(format!(
+                "Unable to parse frontmatter from file {path:?}, reason: {e}",
+            ))
+        })
     }
 
     /// Returns the front matter as well as the content after it.
@@ -43,7 +47,7 @@ impl FrontMatter {
     /// ---
     /// Name: LOL
     /// Date: 2025-01-01 12:50:19 AM
-    /// #penis{#ffffff} #barber{#000000}
+    /// Tags: #penis{#ffffff} #barber{#000000}
     /// ---
     /// ```
     pub fn extract_from_str(string: impl Into<String>) -> ZkResult<(Self, String)> {
@@ -92,6 +96,10 @@ impl FrontMatter {
         let tags: Vec<Tag> = lines
             .get(3)
             .ok_or_else(|| ZkError::ParseError("Tag line doesn't exist!".to_owned()))?
+            .strip_prefix("Tags: ")
+            .ok_or(ZkError::ParseError(
+                "Tag line doesn't start with \"Tags: \" ".to_owned(),
+            ))?
             .split_whitespace()
             .map(|tag_str| {
                 let par_idx = tag_str.find('{').ok_or_else(|| {
@@ -143,7 +151,7 @@ mod tests {
             r#"---            
 Name: LOL
 Date: 2025-01-01 12:50:19 AM
-$whoa{#ffffff} $barber{#000000}
+Tags: $whoa{#ffffff} $barber{#000000}
 ---
 "#,
             (

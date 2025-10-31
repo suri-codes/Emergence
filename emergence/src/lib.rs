@@ -2,4 +2,4 @@
 
 mod app;
 
-pub use app::EmergenecApp;
+pub use app::EmergenceApp;

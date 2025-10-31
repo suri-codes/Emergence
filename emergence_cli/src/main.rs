@@ -1,24 +1,45 @@
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
+use clap::Parser;
+use color_eyre::eyre::Result;
 use emergence_zk::{Kasten, Tag, Zettel, ZettelBuilder};
 
-fn main() {
-    let test_root = PathBuf::from("./test");
+use crate::args::{CliArgs, Commands};
 
-    let zk_b = ZettelBuilder::new(test_root.clone());
+mod args;
 
-    let zk = zk_b
-        .name("kill adrien!")
-        .add_tag(Tag::new("test", "color!").expect("color"))
-        .add_tag(Tag::new("death", "color!").expect("color"))
-        .add_tag(Tag::new("mediatok", "color!").expect("color"))
-        .content("Adrian is just so butt, [PENIS!](./cSRPIvjBQJfv6gjSthYD5.md)")
-        .build()
-        .expect("lol");
+#[tokio::main]
+async fn main() -> Result<()> {
+    color_eyre::install()?;
 
-    let _zettel: Zettel = zk.path.as_path().try_into().expect("lol");
+    let args = CliArgs::parse();
 
-    let kasten = Kasten::generate(test_root).expect("Whateva");
+    match args.command {
+        Commands::Init(args) => {
+            fs::create_dir(format!("./{}", args.name))?;
+            fs::create_dir(format!("./{}/.emergence/", args.name))?;
+        }
 
-    println!("Kasten: {kasten:#?}");
+        Commands::New => {}
+    }
+
+    // let test_root = PathBuf::from("./test");
+
+    // let zk_b = ZettelBuilder::new(test_root.clone());
+
+    // let zk = zk_b
+    //     .name("kill adrien!")
+    //     .add_tag(Tag::new("test", "color!").expect("color"))
+    //     .add_tag(Tag::new("death", "color!").expect("color"))
+    //     .add_tag(Tag::new("mediatok", "color!").expect("color"))
+    //     .content("Adrian is just so butt, [PENIS!](./cSRPIvjBQJfv6gjSthYD5.md)")
+    //     .build()
+    //     .expect("lol");
+
+    // let _zettel: Zettel = zk.path.as_path().try_into().expect("lol");
+
+    // let kasten = Kasten::generate(test_root).expect("Whateva");
+
+    // println!("Kasten: {kasten:#?}");
+    Ok(())
 }
