@@ -129,6 +129,7 @@ impl Display for FrontMatter {
             "Date: {}",
             self.created_at.format_with_items(date_fmt_items)
         )?;
+        write!(f, "Tags: ")?;
 
         for tag in &self.tags {
             write!(f, "{} ", tag)?;

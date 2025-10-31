@@ -58,17 +58,33 @@ impl ZettelBuilder {
         }
     }
 
-    pub fn name(mut self, name: impl Into<String>) -> Self {
+    // methods for mutating inner state
+
+    pub fn name(&mut self, name: impl Into<String>) {
+        self.inner.meta.name = name.into();
+    }
+
+    pub fn add_tag(&mut self, tag: Tag) {
+        self.inner.meta.tags.push(tag);
+    }
+
+    pub fn content(&mut self, content: impl Into<String>) {
+        self.inner.content = content.into();
+    }
+
+    // methods for builder pattern
+
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
         self.inner.meta.name = name.into();
         self
     }
 
-    pub fn add_tag(mut self, tag: Tag) -> Self {
+    pub fn with_additional_tag(mut self, tag: Tag) -> Self {
         self.inner.meta.tags.push(tag);
         self
     }
 
-    pub fn content(mut self, content: impl Into<String>) -> Self {
+    pub fn with_content(mut self, content: impl Into<String>) -> Self {
         self.inner.content = content.into();
 
         self

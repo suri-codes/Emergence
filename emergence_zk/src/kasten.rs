@@ -2,11 +2,10 @@ use std::{
     collections::HashMap,
     fs::{self},
     path::PathBuf,
-    sync::RwLock,
 };
 
 use log::error;
-use petgraph::prelude::{StableGraph, StableUnGraph};
+use petgraph::prelude::StableUnGraph;
 use pulldown_cmark::{Event, Parser, Tag as MkTag};
 
 use crate::{Link, Zettel, ZkError, ZkResult};
@@ -19,7 +18,10 @@ pub struct Kasten {
     _root: PathBuf,
 }
 
-const GRAPH_MAX_NODES: usize = 1024;
+/// maximum number of nodes in our graph, setting at this arbitrary number because im not sure
+/// if the graph type has the capability to scale with adding more nodes
+const GRAPH_MAX_NODES: usize = 128;
+/// Arbitrarily chosen maximum number of edges
 const GRAPH_MAX_EDGES: usize = GRAPH_MAX_NODES * 3;
 
 impl Kasten {
@@ -64,6 +66,15 @@ impl TryFrom<PathBuf> for Kasten {
 
     //TODO: Parallelize the shit out of this dawg
     fn try_from(root: PathBuf) -> Result<Self, Self::Error> {
+        let meta_data = {
+            let mut temp = root.clone();
+            temp.push(".emergence");
+            temp
+        };
+
+        // make sure the metadata folder exists
+        let _ = meta_data.canonicalize()?;
+
         let mut valid_zettels = Vec::new();
 
         let mut path_to_zid = HashMap::new();

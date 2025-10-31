@@ -13,7 +13,7 @@ pub enum Commands {
     Init(InitArgs),
 
     /// Creates a new Zettel
-    New,
+    New(NewArgs),
     // #[command(subcommand)]
     // Group(GroupSubcommand),
 
@@ -31,6 +31,14 @@ pub enum Commands {
 pub struct InitArgs {
     #[arg(short, long, default_value = "ZettelKasten")]
     pub name: String,
+}
+
+#[derive(Debug, Args)]
+pub struct NewArgs {
+    #[arg(short, long)]
+    pub name: Option<String>,
+    #[arg(short, long)]
+    pub tags: Option<Vec<String>>,
 }
 
 // #[derive(Subcommand, Debug)]

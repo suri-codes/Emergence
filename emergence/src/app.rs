@@ -1,8 +1,6 @@
-use egui::{Color32, Widget};
-use egui_graphs::{
-    FruchtermanReingold, FruchtermanReingoldState, Graph, GraphView, LayoutForceDirected,
-};
-use emergence_zk::{Kasten, Link, Zettel, ZkGraph};
+use egui::Color32;
+use egui_graphs::Graph;
+use emergence_zk::{Kasten, Link, Zettel};
 use petgraph::{Undirected, graph::NodeIndex};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -31,7 +29,7 @@ impl Default for EmergenceApp {
             .map(|(idx, _)| idx)
             .collect::<Vec<NodeIndex>>();
 
-        for (node_idx) in node_ids {
+        for node_idx in node_ids {
             let node = graph.node_mut(node_idx).expect("must exist");
             let zettel = &node.props().payload;
 
@@ -51,7 +49,7 @@ impl Default for EmergenceApp {
 
 impl EmergenceApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
