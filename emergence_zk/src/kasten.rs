@@ -2,12 +2,13 @@ use std::{
     collections::HashMap,
     fs::{self},
     path::PathBuf,
+    sync::Mutex,
 };
 
 use log::error;
 use petgraph::prelude::StableUnGraph;
 use pulldown_cmark::{Event, Parser, Tag as MkTag};
-// use rayon::prelude::*;
+use rayon::prelude::*;
 
 use crate::{FrontMatter, Link, Metadata, Zettel, ZettelId, ZkError, ZkResult};
 
@@ -68,12 +69,12 @@ impl TryFrom<PathBuf> for Kasten {
     //TODO: Parallelize the shit out of this dawg
     fn try_from(root: PathBuf) -> Result<Self, Self::Error> {
         // get metadata
-        let _metadata = Metadata::parse(root.clone())
+        let mut _metadata = Metadata::parse(root.clone())
             .map_err(|e| ZkError::ParseError(format!("Failed to parse metadata: {e:?}")))?;
 
         let valid_parsed_files: Vec<_> = fs::read_dir(&root)?
+            .par_bridge()
             .flatten()
-            // .collect::<Vec<_>>()
             .filter_map(|entry| match entry.file_type() {
                 Ok(ft)
                     if ft.is_file()
