@@ -3,6 +3,7 @@ mod frontmatter;
 mod id;
 mod kasten;
 mod link;
+mod metadata;
 mod tag;
 mod zettel;
 
@@ -11,6 +12,7 @@ pub use frontmatter::*;
 pub use id::*;
 pub use kasten::*;
 pub use link::*;
+pub use metadata::*;
 pub use tag::*;
 pub use zettel::*;
 

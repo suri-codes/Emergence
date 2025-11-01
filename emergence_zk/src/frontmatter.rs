@@ -3,7 +3,7 @@ use std::{fmt::Display, fs, path::Path};
 use chrono::{NaiveDateTime, format::StrftimeItems};
 use serde::{Deserialize, Serialize};
 
-use crate::{Tag, ZkError, ZkResult};
+use crate::{ZkError, ZkResult};
 
 const DATE_FMT_STR: &str = "%Y-%m-%d %I:%M:%S %p";
 
@@ -11,15 +11,21 @@ const DATE_FMT_STR: &str = "%Y-%m-%d %I:%M:%S %p";
 pub struct FrontMatter {
     pub name: String,
     pub created_at: NaiveDateTime,
-    pub tags: Vec<Tag>,
+    pub tag_strings: Vec<String>,
 }
 
 impl FrontMatter {
-    pub fn new(name: impl Into<String>, created_at: NaiveDateTime, tags: Vec<Tag>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        created_at: NaiveDateTime,
+        tag_strings: Vec<impl Into<String>>,
+    ) -> Self {
+        let tag_strings = tag_strings.into_iter().map(|e| e.into()).collect();
+
         FrontMatter {
             name: name.into(),
             created_at,
-            tags,
+            tag_strings,
         }
     }
 
@@ -32,11 +38,12 @@ impl FrontMatter {
     /// Tags: #Daily{#ffffff} #barber{#000000}
     /// ---
     /// ```
-    pub fn extract_from_file(path: &Path) -> ZkResult<(Self, String)> {
-        let string = fs::read_to_string(path)?;
+    pub fn extract_from_file(path: impl AsRef<Path>) -> ZkResult<(Self, String)> {
+        let string = fs::read_to_string(&path)?;
         Self::extract_from_str(&string).map_err(|e| {
             ZkError::ParseError(format!(
-                "Unable to parse frontmatter from file {path:?}, reason: {e}",
+                "Unable to parse frontmatter from file {:#?}, reason: {e}",
+                path.as_ref()
             ))
         })
     }
@@ -93,7 +100,7 @@ impl FrontMatter {
             .map(|date_str| NaiveDateTime::parse_from_str(date_str, DATE_FMT_STR))?
             .map_err(|err| ZkError::ParseError(err.to_string()))?;
 
-        let tags: Vec<Tag> = lines
+        let tag_strings: Vec<String> = lines
             .get(3)
             .ok_or_else(|| ZkError::ParseError("Tag line doesn't exist!".to_owned()))?
             .strip_prefix("Tags: ")
@@ -101,21 +108,14 @@ impl FrontMatter {
                 "Tag line doesn't start with \"Tags: \" ".to_owned(),
             ))?
             .split_whitespace()
-            .map(|tag_str| {
-                let par_idx = tag_str.find('{').ok_or_else(|| {
-                    ZkError::ParseError("Unable to find color for Tag!".to_owned())
-                })?;
-                let tag_name = &tag_str[1..par_idx];
-                let tag_color = &tag_str[par_idx + 1..par_idx + 8];
-                Tag::new(tag_name, tag_color)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|e| e.to_owned())
+            .collect::<Vec<_>>();
 
         delim_check(4)?;
 
         let remaining = lines[5..].join("\n");
 
-        Ok((FrontMatter::new(name, created_at, tags), remaining))
+        Ok((FrontMatter::new(name, created_at, tag_strings), remaining))
     }
 }
 
@@ -131,7 +131,7 @@ impl Display for FrontMatter {
         )?;
         write!(f, "Tags: ")?;
 
-        for tag in &self.tags {
+        for tag in &self.tag_strings {
             write!(f, "{} ", tag)?;
         }
 
@@ -145,24 +145,21 @@ mod tests {
 
     use chrono::NaiveDateTime;
 
-    use crate::{FrontMatter, Tag, frontmatter::DATE_FMT_STR};
+    use crate::{FrontMatter, frontmatter::DATE_FMT_STR};
 
     lazy_static! {
         static ref test_suite: [(&'static str, (FrontMatter, &'static str)); 1] = [(
             r#"---            
 Name: LOL
 Date: 2025-01-01 12:50:19 AM
-Tags: $whoa{#ffffff} $barber{#000000}
+Tags: whoa barber
 ---
 "#,
             (
                 FrontMatter::new(
                     "LOL",
                     NaiveDateTime::parse_from_str("2025-01-01 12:50:19 AM", DATE_FMT_STR).unwrap(),
-                    vec![
-                        Tag::new("whoa", "#ffffff").unwrap(),
-                        Tag::new("barber", "#000000").unwrap(),
-                    ],
+                    vec!["whoa", "barber",],
                 ),
                 "",
             ),

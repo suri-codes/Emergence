@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display, fs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +12,8 @@ pub struct Tag {
     //TODO: make this actually something
     color: String,
 }
+
+pub type TagMap = HashMap<String, Tag>;
 
 impl Tag {
     pub fn new(name: impl Into<String>, color: impl Into<String>) -> ZkResult<Self> {
@@ -31,10 +33,20 @@ impl Tag {
             color: color.to_owned(),
         })
     }
+
+    pub fn get_tag_map(meta_folder: impl Into<PathBuf>) -> ZkResult<TagMap> {
+        let mut tag_file: PathBuf = meta_folder.into();
+
+        tag_file.push("tags.toml");
+
+        let tag_file_string = fs::read_to_string(tag_file)?;
+
+        toml::from_str(&tag_file_string).map_err(|e| ZkError::ParseError(e.to_string()))
+    }
 }
 
 impl Display for Tag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "${}{{#{}}}", self.name, self.color)
+        write!(f, "{}", self.name)
     }
 }

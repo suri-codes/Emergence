@@ -7,8 +7,9 @@ use std::{
 use log::error;
 use petgraph::prelude::StableUnGraph;
 use pulldown_cmark::{Event, Parser, Tag as MkTag};
+// use rayon::prelude::*;
 
-use crate::{Link, Zettel, ZkError, ZkResult};
+use crate::{FrontMatter, Link, Metadata, Zettel, ZettelId, ZkError, ZkResult};
 
 pub type ZkGraph = StableUnGraph<Zettel, Link>;
 
@@ -66,46 +67,61 @@ impl TryFrom<PathBuf> for Kasten {
 
     //TODO: Parallelize the shit out of this dawg
     fn try_from(root: PathBuf) -> Result<Self, Self::Error> {
-        let meta_data = {
-            let mut temp = root.clone();
-            temp.push(".emergence");
-            temp
-        };
+        // get metadata
+        let _metadata = Metadata::parse(root.clone())
+            .map_err(|e| ZkError::ParseError(format!("Failed to parse metadata: {e:?}")))?;
 
-        // make sure the metadata folder exists
-        let _ = meta_data.canonicalize()?;
+        let valid_parsed_files: Vec<_> = fs::read_dir(&root)?
+            .flatten()
+            // .collect::<Vec<_>>()
+            .filter_map(|entry| match entry.file_type() {
+                Ok(ft)
+                    if ft.is_file()
+                        && entry
+                            .path()
+                            .extension()
+                            .and_then(|ext| ext.to_str())
+                            .map(|ext| ext == "md")
+                            .unwrap_or(false) =>
+                {
+                    // we want to have a type of
+                    let f_str = fs::read_to_string(entry.path())
+                        .inspect_err(|e| error!("error reading from file {entry:?}: {e:?}"))
+                        .ok()?;
+
+                    let (front_matter, content) = FrontMatter::extract_from_str(&f_str)
+                        .inspect_err(|e| error!("Error parsing frontmatter for {entry:?}: {e:?}"))
+                        .ok()?;
+
+                    let zettel_id: ZettelId = entry
+                        .path()
+                        .try_into()
+                        .inspect_err(|e| {
+                            error!("Error parsing ZettelId from {:?}: {e:?}", entry.path())
+                        })
+                        .ok()?;
+
+                    //TODO: update the metadata
+                    // i guess we can update the front_matter right here
+
+                    Some((front_matter, content, entry.path(), zettel_id))
+                }
+                _ => None,
+            })
+            .collect();
 
         let mut valid_zettels = Vec::new();
 
         let mut path_to_zid = HashMap::new();
 
-        for entry in fs::read_dir(root.clone())? {
-            let entry = entry?;
+        // here we make all the zettels
+        for (front_matter, content, path, id) in valid_parsed_files {
+            // here we just have to get the tags
+            let zettel = Zettel::new(id, path, front_matter, Vec::new(), content);
 
-            if let Some(end_bit) = entry
-                .file_name()
-                .into_string()
-                .map_err(|os_str| {
-                    ZkError::ParseError(format!(
-                        "Failed to convert file name: {os_str:?} into a proper string!"
-                    ))
-                })?
-                .split_terminator(".")
-                .last()
-                && end_bit == "md"
-                && entry.file_type()?.is_file()
-            {
-                let Ok(zettel) = Zettel::try_from(entry.path().as_path())
-                    .inspect_err(|e| error!("Error parsing Zettel: {e:?}"))
-                else {
-                    // skip file if we arent able to parse it
-                    continue;
-                };
+            let _ = path_to_zid.insert(zettel.path.canonicalize()?, zettel.id.clone());
 
-                let _ = path_to_zid.insert(zettel.path.canonicalize()?, zettel.id.clone());
-
-                valid_zettels.push(zettel)
-            }
+            valid_zettels.push(zettel)
         }
 
         // now we can see if the zettels link to eachother

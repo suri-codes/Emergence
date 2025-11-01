@@ -1,6 +1,7 @@
 use egui::Color32;
 use egui_graphs::Graph;
 use emergence_zk::{Kasten, Link, Zettel};
+use log::error;
 use petgraph::{Undirected, graph::NodeIndex};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -20,8 +21,9 @@ type EmerGraph = Graph<Zettel, Link, Undirected>;
 
 impl Default for EmergenceApp {
     fn default() -> Self {
-        let kasten =
-            Kasten::parse("./test_kasten").expect("test_kasten missing, try generating it");
+        let kasten = Kasten::parse("./test_kasten")
+            .inspect_err(|e| error!("{e:#?}"))
+            .expect("test_kasten missing, try generating it");
 
         let mut graph = EmerGraph::from(&kasten.graph);
 
@@ -34,9 +36,9 @@ impl Default for EmergenceApp {
             let node = graph.node_mut(node_idx).expect("must exist");
             let zettel = &node.props().payload;
 
-            node.set_label(zettel.meta.name.clone());
+            node.set_label(zettel.front_matter.name.clone());
             // this should be soemthing related to the thing
-            node.set_color(Color32::RED);
+            node.set_color(Color32::GREEN);
         }
 
         Self {

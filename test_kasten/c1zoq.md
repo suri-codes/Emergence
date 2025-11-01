@@ -1,8 +1,10 @@
 ---
-Name: lol
+Name: Surednra
 Date: 2025-10-30 11:29:48 PM
-Tags: $what{#penis} 
+Tags: 
 ---
+
+
 
 so we have tags now
 

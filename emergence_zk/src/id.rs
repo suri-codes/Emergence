@@ -1,4 +1,7 @@
-use std::{fmt::Display, path::Path};
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+};
 
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
@@ -34,6 +37,15 @@ impl From<&str> for ZettelId {
 impl From<&ZettelId> for ZettelId {
     fn from(value: &ZettelId) -> Self {
         value.clone()
+    }
+}
+
+impl TryFrom<PathBuf> for ZettelId {
+    type Error = ZkError;
+
+    fn try_from(value: PathBuf) -> Result<Self, Self::Error> {
+        let path = value.as_path();
+        path.try_into()
     }
 }
 

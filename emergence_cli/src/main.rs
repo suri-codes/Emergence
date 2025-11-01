@@ -5,7 +5,7 @@ use std::{
 
 use clap::Parser as _;
 use color_eyre::{eyre::Result, owo_colors::OwoColorize as _};
-use emergence_zk::{Kasten, Tag, Zettel, ZettelBuilder};
+use emergence_zk::{Kasten, Metadata, Tag, Zettel, ZettelBuilder};
 
 use crate::args::{CliArgs, Commands};
 
@@ -38,10 +38,13 @@ async fn main() -> Result<()> {
             let pwd = current_dir()?;
 
             // make sure this directory is a kasten, might be a better way to do this
-            let _: Kasten = Kasten::parse(&pwd)
-                .inspect_err(|e| eprintln!("You arent in a valid kasten! {e}"))?;
+            //TODO: yeah realistically we just have to make sure that the metadata for the kasten exists
+            // let _: Kasten = Kasten::parse(&pwd)
+            //     .inspect_err(|e| eprintln!("You arent in a valid kasten! {e}"))?;
 
-            let mut zb = ZettelBuilder::new(pwd);
+            let meta = Metadata::parse(pwd)?;
+
+            let mut zb = ZettelBuilder::new(&meta);
 
             if let Some(name) = args.name {
                 zb.name(name);

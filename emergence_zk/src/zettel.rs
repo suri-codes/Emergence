@@ -1,35 +1,35 @@
 use std::io::Write;
-use std::{
-    fs::OpenOptions,
-    path::{Path, PathBuf},
-};
+use std::{fs::OpenOptions, path::PathBuf};
 
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 
-use crate::{FrontMatter, Tag, ZettelId, ZkError, ZkResult};
+use crate::{FrontMatter, Metadata, Tag, ZettelId, ZkResult};
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct Zettel {
     pub path: PathBuf,
     pub id: ZettelId,
-    pub meta: FrontMatter,
+    pub front_matter: FrontMatter,
+    pub tags: Vec<Tag>,
     pub content: String,
 }
 
-impl TryFrom<&Path> for Zettel {
-    type Error = ZkError;
-    fn try_from(value: &Path) -> Result<Self, Self::Error> {
-        let (front_matter, content) = FrontMatter::extract_from_file(value)?;
-
-        let id: ZettelId = value.try_into()?;
-
-        Ok(Zettel {
-            path: value.to_path_buf(),
+impl Zettel {
+    pub fn new(
+        id: ZettelId,
+        path: PathBuf,
+        front_matter: FrontMatter,
+        tags: Vec<Tag>,
+        content: String,
+    ) -> Self {
+        Self {
+            path,
             id,
-            meta: front_matter,
+            front_matter,
+            tags,
             content,
-        })
+        }
     }
 }
 
@@ -38,22 +38,24 @@ pub struct ZettelBuilder {
 }
 
 impl ZettelBuilder {
-    pub fn new(mut project_root: PathBuf) -> Self {
+    pub fn new(metadata: &Metadata) -> Self {
         let id = ZettelId::default();
 
         let zettel_path = {
+            let mut project_root = metadata.project_root.clone();
             project_root.push([id.as_str(), ".md"].join(""));
             project_root
         };
 
-        let front_matter = FrontMatter::new("", Local::now().naive_local(), vec![]);
+        let front_matter = FrontMatter::new("", Local::now().naive_local(), Vec::<String>::new());
 
         ZettelBuilder {
             inner: Zettel {
                 id,
                 path: zettel_path,
-                meta: front_matter,
+                front_matter,
                 content: "".to_owned(),
+                tags: Vec::new(),
             },
         }
     }
@@ -61,11 +63,11 @@ impl ZettelBuilder {
     // methods for mutating inner state
 
     pub fn name(&mut self, name: impl Into<String>) {
-        self.inner.meta.name = name.into();
+        self.inner.front_matter.name = name.into();
     }
 
     pub fn add_tag(&mut self, tag: Tag) {
-        self.inner.meta.tags.push(tag);
+        self.inner.tags.push(tag);
     }
 
     pub fn content(&mut self, content: impl Into<String>) {
@@ -75,12 +77,12 @@ impl ZettelBuilder {
     // methods for builder pattern
 
     pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.inner.meta.name = name.into();
+        self.inner.front_matter.name = name.into();
         self
     }
 
     pub fn with_additional_tag(mut self, tag: Tag) -> Self {
-        self.inner.meta.tags.push(tag);
+        self.inner.tags.push(tag);
         self
     }
 
@@ -94,7 +96,7 @@ impl ZettelBuilder {
         let now = Local::now().naive_local();
 
         // set created_at to build time
-        self.inner.meta.created_at = now;
+        self.inner.front_matter.created_at = now;
 
         let mut f = OpenOptions::new()
             .create_new(true)
@@ -102,7 +104,7 @@ impl ZettelBuilder {
             .append(true)
             .open(&self.inner.path)?;
 
-        writeln!(f, "{}", self.inner.meta)?;
+        writeln!(f, "{}", self.inner.front_matter)?;
         writeln!(f, "{}", self.inner.content)?;
 
         Ok(self.inner)
