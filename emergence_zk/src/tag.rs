@@ -2,15 +2,15 @@ use std::{collections::HashMap, fmt::Display, fs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ZkError, ZkResult};
+use crate::{ZkError, ZkResult, entities::tag};
 
 //TODO: think about how we want to deal with tags
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Tag {
-    name: String,
+    pub name: String,
     //TODO: make this actually something
-    color: String,
+    pub color: String,
 }
 
 pub type TagMap = HashMap<String, Tag>;
@@ -33,15 +33,22 @@ impl Tag {
             color: color.to_owned(),
         })
     }
+}
 
-    pub fn get_tag_map(meta_folder: impl Into<PathBuf>) -> ZkResult<TagMap> {
-        let mut tag_file: PathBuf = meta_folder.into();
-
-        tag_file.push("tags.toml");
-
-        let tag_file_string = fs::read_to_string(tag_file)?;
-
-        toml::from_str(&tag_file_string).map_err(|e| ZkError::ParseError(e.to_string()))
+impl From<tag::ModelEx> for Tag {
+    fn from(value: tag::ModelEx) -> Self {
+        Tag {
+            name: value.name,
+            color: value.color,
+        }
+    }
+}
+impl From<tag::Model> for Tag {
+    fn from(value: tag::Model) -> Self {
+        Tag {
+            name: value.name,
+            color: value.color,
+        }
     }
 }
 

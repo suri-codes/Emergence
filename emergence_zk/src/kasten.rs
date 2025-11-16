@@ -11,7 +11,7 @@ use petgraph::prelude::StableUnGraph;
 use pulldown_cmark::{Event, Parser, Tag as MkTag};
 use rayon::prelude::*;
 
-use crate::{EmergenceDb, FrontMatter, Link, Metadata, Zettel, ZettelId, ZkError, ZkResult};
+use crate::{EmergenceDb, FrontMatter, Link, Zettel, ZettelId, ZkError, ZkResult};
 
 pub type ZkGraph = StableUnGraph<Zettel, Link>;
 
@@ -57,6 +57,10 @@ impl Kasten {
         Ok(me)
     }
 
+    pub fn root(&self) -> &Path {
+        &self._root
+    }
+
     /// Parses a Kasten from the specified `root`.
     /// NOTE: If any `Zettel` is unable to be parsed, it will be skipped instead of erroring out.
     ///
@@ -64,10 +68,6 @@ impl Kasten {
     /// This function can error if any file-system operation fails.  
     pub async fn parse(root: impl Into<PathBuf>) -> ZkResult<Self> {
         let root = root.into();
-
-        // get metadata
-        let mut _metadata = Metadata::parse(root.clone())
-            .map_err(|e| ZkError::ParseError(format!("Failed to parse metadata: {e:?}")))?;
 
         let valid_parsed_files: Vec<_> = fs::read_dir(&root)?
             .par_bridge()

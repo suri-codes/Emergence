@@ -11,7 +11,7 @@ use std::{
 use clap::Parser as _;
 use color_eyre::{eyre::Result, owo_colors::OwoColorize as _};
 use emergence_zk::{
-    EmergenceDb, Kasten, Metadata, Tag, Zettel, ZettelBuilder,
+    EmergenceDb, Kasten, Tag, Zettel, ZettelBuilder,
     entities::{self},
     entity::ActiveValue,
 };

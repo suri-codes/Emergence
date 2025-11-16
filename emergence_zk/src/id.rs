@@ -1,10 +1,9 @@
+use nanoid::nanoid;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
     path::{Path, PathBuf},
 };
-
-use nanoid::nanoid;
-use serde::{Deserialize, Serialize};
 
 use crate::ZkError;
 
@@ -53,6 +52,20 @@ impl TryFrom<&Path> for ZettelId {
     type Error = ZkError;
 
     fn try_from(value: &Path) -> Result<Self, Self::Error> {
+        let extension =
+            value
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .ok_or(ZkError::ParseError(
+                    "Unable to turn file extension into string".to_owned(),
+                ))?;
+
+        if extension != "md" {
+            return Err(ZkError::ParseError(format!(
+                "Wrong extension: {extension}, expected .md"
+            )));
+        }
+
         let id: ZettelId = value
             .file_name()
             .ok_or(ZkError::ParseError("Invalid File Name!".to_owned()))?

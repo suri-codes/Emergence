@@ -87,7 +87,7 @@ impl FrontMatter {
             .ok_or(ZkError::ParseError("Title line doesn't exist!".to_owned()))?
             .strip_prefix("Title: ")
             .ok_or(ZkError::ParseError(
-                "Name line doesn't start with \"Name: \" ".to_owned(),
+                "Title line doesn't start with \"Title: \" ".to_owned(),
             ))?;
 
         let created_at = lines
@@ -123,7 +123,7 @@ impl Display for FrontMatter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let date_fmt_items = StrftimeItems::new(DATE_FMT_STR);
         writeln!(f, "---")?;
-        writeln!(f, "Name: {}", self.title)?;
+        writeln!(f, "Title: {}", self.title)?;
         writeln!(
             f,
             "Date: {}",
@@ -145,12 +145,12 @@ mod tests {
 
     use chrono::NaiveDateTime;
 
-    use crate::{FrontMatter, frontmatter::DATE_FMT_STR};
+    use crate::{FrontMatter, zettel::frontmatter::DATE_FMT_STR};
 
     lazy_static! {
         static ref test_suite: [(&'static str, (FrontMatter, &'static str)); 1] = [(
             r#"---            
-Name: LOL
+Title: LOL
 Date: 2025-01-01 12:50:19 AM
 Tags: whoa barber
 ---
