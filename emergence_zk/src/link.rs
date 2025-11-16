@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ZettelId;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Link {
     pub source: ZettelId,
     pub dest: ZettelId,

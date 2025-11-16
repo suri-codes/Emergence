@@ -3,10 +3,12 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 
+use pulldown_cmark::{Event, Parser, Tag as MkTag};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
-use crate::{Tag, Workspace, ZettelId, ZkResult};
+use crate::{Link, Tag, Workspace, ZettelId, ZkResult};
 
 use crate::entities::{prelude::*, tag, zettel, zettel_tag};
 
@@ -21,6 +23,7 @@ pub struct Zettel {
     pub id: ZettelId,
     pub front_matter: FrontMatter,
     pub tags: Vec<Tag>,
+    pub links: Vec<Link>,
     pub content: String,
 }
 
@@ -37,6 +40,7 @@ impl Zettel {
             id,
             front_matter,
             tags,
+            links: vec![],
             content,
         }
     }
@@ -47,6 +51,39 @@ impl Zettel {
         path.push(id.as_str());
 
         Self::from_path(path, ws).await
+    }
+
+    fn links_from_content(src_id: &ZettelId, content: &str, ws: &Workspace) -> ZkResult<Vec<Link>> {
+        let parsed = Parser::new(content);
+
+        let mut links = vec![];
+
+        for event in parsed {
+            if let Event::Start(MkTag::Link { dest_url, .. }) = event {
+                println!("Found dest_url: {dest_url:#?}");
+                let dest_path = {
+                    let mut tmp_root = ws.root.clone();
+                    tmp_root.push(dest_url.into_string());
+                    tmp_root
+                };
+                // simplest way to validate that the path exists
+                let canon_url = match dest_path.canonicalize() {
+                    Ok(canon_url) => canon_url,
+                    Err(_) => {
+                        error!("Link not found!: {dest_path:?}");
+                        continue;
+                    }
+                };
+
+                let dst_id = ZettelId::try_from(canon_url)?;
+
+                let link = Link::new(src_id, dst_id);
+
+                links.push(link)
+            }
+        }
+
+        Ok(links)
     }
 
     pub async fn from_path(path: impl Into<PathBuf>, ws: &Workspace) -> ZkResult<Self> {
@@ -122,12 +159,17 @@ impl Zettel {
             am.update(ws.db.as_ref()).await?;
         }
 
+        // now we can do links
+        //
+        let links = Self::links_from_content(&id, &content, ws)?;
+
         Ok(Zettel {
             path,
             id,
             front_matter,
             tags: zettel_tags,
             content,
+            links,
         })
     }
 

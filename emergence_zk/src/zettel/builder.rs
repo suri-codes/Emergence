@@ -29,6 +29,7 @@ impl ZettelBuilder {
                 front_matter,
                 content: "".to_owned(),
                 tags: Vec::new(),
+                links: vec![],
             },
         }
     }

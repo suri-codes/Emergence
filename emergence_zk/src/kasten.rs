@@ -74,7 +74,7 @@ impl Kasten {
     pub async fn parse(root: impl Into<PathBuf>) -> ZkResult<Self> {
         let root = root.into();
 
-        let valid_parsed_files: Vec<_> = fs::read_dir(&root)?
+        let valid_parsed_files = fs::read_dir(&root)?
             .par_bridge()
             .flatten()
             .filter_map(|entry| match entry.file_type() {
@@ -111,7 +111,7 @@ impl Kasten {
                 }
                 _ => None,
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         let mut valid_zettels = Vec::new();
 
