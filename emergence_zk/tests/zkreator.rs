@@ -1,6 +1,6 @@
 use std::{env::current_dir, path::PathBuf};
 
-use emergence_zk::{Kasten, ZettelBuilder, ZettelId, ZkGraph, ZkResult, entities};
+use emergence_zk::{Kasten, Zettel, ZettelBuilder, ZettelId, ZkGraph, ZkResult, entities};
 use sea_orm::EntityTrait;
 
 #[expect(unused)]
@@ -23,29 +23,28 @@ impl ZKreator {
 
     /// creates allat
     #[expect(unused)]
-    pub async fn create(self) -> ZkResult<PathBuf> {
-        let rand = ZettelId::default();
+    pub async fn create(mut self) -> ZkResult<PathBuf> {
+        let root = {
+            let rand = ZettelId::default();
+            let mut pwd = current_dir()?;
+            pwd.push(format!("zkreator_{}", rand));
+            pwd
+        };
 
-        let mut pwd = current_dir()?;
-        pwd.push(rand.to_string());
+        let x = Kasten::new(&root).await?;
 
-        let x = Kasten::new(pwd).await?;
+        let ws = &x.ws;
 
         // created zettels
+        let mut zettels = Vec::new();
         for _ in 0..self.num_nodes {
             let z = ZettelBuilder::new(x.root())
-                .with_name("test")
+                .with_title("test")
                 .build(&x.db)
                 .await?;
+
+            zettels.push(z.clone());
         }
-
-        let ids = entities::zettel::Entity::find()
-            .all(x.db.as_ref())
-            .await?
-            .iter()
-            .map(|m| ZettelId::from(m.nanoid.as_str()))
-            .collect::<Vec<_>>();
-
         let mut remaining_edges = self.num_edges;
 
         let mut rng = rand::rng();
@@ -53,23 +52,19 @@ impl ZKreator {
         while remaining_edges > 0 {
             use rand::prelude::*;
 
-            let src = ids.choose(&mut rng).expect("id's are empty?!");
-            let dst = ids.choose(&mut rng).expect("id's are empty?!");
+            let dst = zettels
+                .choose(&mut rng)
+                .expect("id's are empty?!")
+                .id
+                .clone();
 
-            // now we need to make a link between them
-            //
+            let src = zettels.choose_mut(&mut rng).expect("id's are empty?!");
+
+            src.content.push_str(format!("[dst]({dst}.md)\n").as_str());
+            src.flush();
             remaining_edges -= 1;
         }
 
-        //
-
-        //
-
-        // i guess first we can create the actual files
-        //
-        //
-
-        // and then we can create the edges?
-        todo!()
+        Ok(root)
     }
 }

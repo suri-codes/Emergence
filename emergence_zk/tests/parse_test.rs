@@ -2,7 +2,9 @@ use crate::zkreator::ZKreator;
 
 mod zkreator;
 
-#[test]
-fn test_basic() {
-    let _creator = ZKreator::new(5, 5);
+#[tokio::test]
+async fn test_basic() {
+    let creator = ZKreator::new(1000, 10000);
+
+    creator.create().await;
 }

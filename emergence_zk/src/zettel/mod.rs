@@ -1,16 +1,19 @@
+use std::fmt::Display;
+use std::fs::OpenOptions;
 use std::io::Write;
-use std::{fs::OpenOptions, path::PathBuf};
+use std::path::PathBuf;
 
-use chrono::Local;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
 use serde::{Deserialize, Serialize};
 
-use crate::{EmergenceDb, Tag, Workspace, ZettelId, ZkResult, entities};
+use crate::{Tag, Workspace, ZettelId, ZkResult};
 
 use crate::entities::{prelude::*, tag, zettel, zettel_tag};
 
 mod frontmatter;
 pub use frontmatter::*;
+mod builder;
+pub use builder::*;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct Zettel {
@@ -59,29 +62,24 @@ impl Zettel {
 
         let mut zettel_tags = vec![];
 
-        let zettel_db = ZettelEntity::load()
+        let db_zettel = ZettelEntity::load()
             .with(TagEntity)
             .filter_by_nanoid(id.as_str())
             .one(ws.db.as_ref())
             .await?
             .unwrap_or_else(|| panic!("zettel missing from db! :{id:?}"));
 
-        for tag in zettel_db.tags.into_iter() {
-            if let Ok(idx) = zettel_tag_strings.binary_search(&tag.name) {
+        for db_tag in db_zettel.tags.into_iter() {
+            if let Ok(idx) = zettel_tag_strings.binary_search(&db_tag.name) {
                 // we remove tags we have already processed
                 zettel_tag_strings.remove(idx);
-                zettel_tags.push(Tag::from(tag))
+                zettel_tags.push(Tag::from(db_tag))
             } else {
                 // the db says the file has tag `x`, but that tag is missing from the
-                // front matter, we can assume its gone
-                //
-                //
-                // so i have a tag id, i need to find the zetteltag
-                // link between this zettel and the tag id, and then
-                // delete it
+                // front matter, we can assume its gone, lets delete that link
                 let x = ZettelTag::find()
                     .filter(zettel_tag::Column::ZettelNanoId.eq(id.as_str()))
-                    .filter(zettel_tag::Column::TagNanoId.eq(tag.id))
+                    .filter(zettel_tag::Column::TagNanoId.eq(db_tag.nanoid))
                     .one(ws.db.as_ref())
                     .await?
                     .expect("this link must exist");
@@ -92,7 +90,6 @@ impl Zettel {
 
         // now any tags that are left inside zettel_tag_strings,
         // we have to put them inside the db
-        //
         for new_tag in zettel_tag_strings {
             let am = tag::ActiveModel {
                 nanoid: sea_orm::ActiveValue::Set(ZettelId::default().to_string()),
@@ -114,13 +111,15 @@ impl Zettel {
             zettel_tags.push(Tag::from(x));
         }
 
-        let am = zettel::ActiveModel {
-            id: sea_orm::ActiveValue::Unchanged(zettel_db.id),
-            title: sea_orm::ActiveValue::Set(front_matter.title.clone()),
-            ..Default::default()
-        };
+        if front_matter.title != db_zettel.title {
+            let am = zettel::ActiveModel {
+                id: sea_orm::ActiveValue::Unchanged(db_zettel.id),
+                title: sea_orm::ActiveValue::Set(front_matter.title.clone()),
+                ..Default::default()
+            };
 
-        am.update(ws.db.as_ref()).await?;
+            am.update(ws.db.as_ref()).await?;
+        }
 
         Ok(Zettel {
             path,
@@ -131,93 +130,22 @@ impl Zettel {
         })
     }
 
-    pub fn active_model(&self) -> entities::zettel::ActiveModel {
-        entities::zettel::ActiveModel {
-            nanoid: sea_orm::ActiveValue::Set(self.id.to_string()),
-            title: sea_orm::ActiveValue::Set(self.front_matter.title.clone()),
-            ..Default::default()
-        }
-    }
-}
-
-pub struct ZettelBuilder {
-    inner: Zettel,
-}
-
-impl ZettelBuilder {
-    pub fn new(root: impl Into<PathBuf>) -> Self {
-        let id = ZettelId::default();
-
-        let zettel_path = {
-            let mut project_root = root.into();
-            project_root.push([id.as_str(), ".md"].join(""));
-            project_root
-        };
-
-        let front_matter = FrontMatter::new("", Local::now().naive_local(), Vec::<String>::new());
-
-        ZettelBuilder {
-            inner: Zettel {
-                id,
-                path: zettel_path,
-                front_matter,
-                content: "".to_owned(),
-                tags: Vec::new(),
-            },
-        }
-    }
-
-    // methods for mutating inner state
-
-    pub fn name(&mut self, name: impl Into<String>) {
-        self.inner.front_matter.title = name.into();
-    }
-
-    pub fn add_tag(&mut self, tag: Tag) {
-        self.inner.tags.push(tag);
-    }
-
-    pub fn content(&mut self, content: impl Into<String>) {
-        self.inner.content = content.into();
-    }
-
-    // methods for builder pattern
-
-    pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.inner.front_matter.title = name.into();
-        self
-    }
-
-    pub fn with_additional_tag(mut self, tag: Tag) -> Self {
-        self.inner.tags.push(tag);
-        self
-    }
-
-    pub fn with_content(mut self, content: impl Into<String>) -> Self {
-        self.inner.content = content.into();
-
-        self
-    }
-
-    pub async fn build(mut self, db: &EmergenceDb) -> ZkResult<Zettel> {
-        let now = Local::now().naive_local();
-
-        // set created_at to build time
-        self.inner.front_matter.created_at = now;
-
+    /// Writes this Zettel to Disk
+    pub fn flush(&self) -> ZkResult<()> {
         let mut f = OpenOptions::new()
-            .create_new(true)
             .read(true)
-            .append(true)
-            .open(&self.inner.path)?;
+            .write(true)
+            .truncate(true)
+            .open(self.path.as_path())?;
 
-        writeln!(f, "{}", self.inner.front_matter)?;
-        writeln!(f, "{}", self.inner.content)?;
+        write!(f, "{self}")?;
+        Ok(())
+    }
+}
 
-        let am = self.inner.active_model();
-
-        am.insert(db.as_ref()).await?;
-
-        Ok(self.inner)
+impl Display for Zettel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.front_matter)?;
+        write!(f, "{}", self.content)
     }
 }
