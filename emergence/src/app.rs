@@ -1,54 +1,28 @@
 use egui::Color32;
+use egui_async::{Bind, EguiAsyncPlugin};
 use egui_graphs::Graph;
-use emergence_zk::{Kasten, Link, Zettel};
+use emergence_zk::{Kasten, Link, Zettel, ZkError};
 use log::error;
 use petgraph::{Undirected, graph::NodeIndex};
+use tokio::task::{block_in_place, spawn_blocking};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
+// #[derive(serde::Deserialize, serde::Serialize)]
+// #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct EmergenceApp {
     // Example stuff:
     label: String,
 
-    #[serde(skip)] // This how you opt-out of serialization of a field
+    // #[serde(skip)] // This how you opt-out of serialization of a field
     value: f32,
 
+    // #[serde(skip)] // This how you opt-out of serialization of a field
     graph: EmerGraph,
+
+    kasten_bind: Bind<Kasten, ZkError>,
 }
 
 type EmerGraph = Graph<Zettel, Link, Undirected>;
-
-impl Default for EmergenceApp {
-    fn default() -> Self {
-        let kasten = Kasten::parse("./test_kasten")
-            .inspect_err(|e| error!("{e:#?}"))
-            .expect("test_kasten missing, try generating it");
-
-        let mut graph = EmerGraph::from(&kasten.graph);
-
-        let node_ids: Vec<_> = graph
-            .nodes_iter()
-            .map(|(idx, _)| idx)
-            .collect::<Vec<NodeIndex>>();
-
-        for node_idx in node_ids {
-            let node = graph.node_mut(node_idx).expect("must exist");
-            let zettel = &node.props().payload;
-
-            node.set_label(zettel.front_matter.name.clone());
-            // this should be soemthing related to the thing
-            node.set_color(Color32::GREEN);
-        }
-
-        Self {
-            // Example stuff:
-            label: "Hello orld!".to_owned(),
-            value: 2.7,
-            graph,
-        }
-    }
-}
 
 impl EmergenceApp {
     /// Called once before the first frame.
@@ -64,20 +38,73 @@ impl EmergenceApp {
         //     Default::default()
         // }
         //
-        Default::default()
+
+        // ok we will just block on this cuz we are dick
+        // let kasten = tokio::runtime::Handle::current().block_on(async {
+        //     Kasten::parse("./test_kasten")
+        //         .await
+        //         .inspect_err(|e| error!("{e:#?}"))
+        //         .expect("test_kasten missing, try generating it")
+        // });
+
+        // Overhead: ~negligible
+        let (tx, mut rx) = tokio::sync::oneshot::channel();
+
+        tokio::spawn(async move {
+            let kasten = Kasten::parse("./test_kasten").await.unwrap();
+            tx.send(kasten).unwrap();
+        });
+
+        let kasten = loop {
+            match rx.try_recv() {
+                Ok(k) => break k,
+
+                _ => continue,
+            };
+        };
+
+        let x = kasten.clone();
+        tokio::spawn(async move { x.watch() });
+
+        let k_graph = &kasten.graph.lock().unwrap().clone();
+
+        let mut graph = EmerGraph::from(k_graph);
+
+        let node_ids: Vec<_> = graph
+            .nodes_iter()
+            .map(|(idx, _)| idx)
+            .collect::<Vec<NodeIndex>>();
+
+        for node_idx in node_ids {
+            let node = graph.node_mut(node_idx).expect("must exist");
+            let zettel = &node.props().payload;
+
+            node.set_label(zettel.front_matter.title.clone());
+            // this should be soemthing related to the thing
+            node.set_color(Color32::GREEN);
+        }
+
+        Self {
+            // Example stuff:
+            label: "Hello orld!".to_owned(),
+            value: 2.7,
+            graph,
+            kasten_bind: Bind::default(),
+        }
     }
 }
 
 impl eframe::App for EmergenceApp {
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
+        // eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
+        ctx.plugin_or_default::<EguiAsyncPlugin>(); // <-- REQUIRED
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
@@ -119,6 +146,14 @@ impl eframe::App for EmergenceApp {
             // type S = FruchtermanReingoldState;
             // let mut graph_view =
             //     egui_graphs::GraphView::<_, _, _, _, _, _, S, L>::new(&mut self.graph);
+            // self.kasten_bind.request(|| async {
+            //     self.kasten_bind.
+
+            // }());
+
+            // if self.kasten_bind.is_idle() {}
+
+            //TODO: this wont update the thing
             let mut graph_view = egui_graphs::GraphView::<_, _, Undirected>::new(&mut self.graph);
 
             ui.add(&mut graph_view);

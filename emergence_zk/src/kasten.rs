@@ -1,22 +1,24 @@
 use std::{
     collections::HashMap,
     fs::{self},
-    path::PathBuf,
-    sync::Mutex,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, mpsc},
 };
 
 use log::error;
+use notify::{RecursiveMode, Watcher};
 use petgraph::prelude::StableUnGraph;
 use pulldown_cmark::{Event, Parser, Tag as MkTag};
 use rayon::prelude::*;
 
-use crate::{FrontMatter, Link, Metadata, Zettel, ZettelId, ZkError, ZkResult};
+use crate::{EmergenceDb, FrontMatter, Link, Metadata, Zettel, ZettelId, ZkError, ZkResult};
 
 pub type ZkGraph = StableUnGraph<Zettel, Link>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Kasten {
-    pub graph: ZkGraph,
+    pub graph: Arc<Mutex<ZkGraph>>,
+    pub db: EmergenceDb,
     _root: PathBuf,
 }
 
@@ -31,7 +33,7 @@ impl Kasten {
     ///
     /// # Errors
     /// This function can error if any file-system operation fails.  
-    pub fn new(dest: impl Into<PathBuf>) -> ZkResult<Self> {
+    pub async fn new(dest: impl Into<PathBuf>) -> ZkResult<Self> {
         let dest: PathBuf = dest.into();
 
         fs::create_dir_all(&dest)?;
@@ -42,8 +44,15 @@ impl Kasten {
         fs::create_dir_all(our_folder)?;
 
         let graph: ZkGraph = StableUnGraph::with_capacity(GRAPH_MAX_NODES, GRAPH_MAX_EDGES);
+
+        let db = EmergenceDb::connect(dest.clone()).await?;
+
         // okay now we have a new thingy
-        let me = Self { graph, _root: dest };
+        let me = Self {
+            graph: Arc::new(Mutex::new(graph)),
+            _root: dest,
+            db,
+        };
 
         Ok(me)
     }
@@ -53,21 +62,9 @@ impl Kasten {
     ///
     /// # Errors
     /// This function can error if any file-system operation fails.  
-    pub fn parse(root: impl Into<PathBuf>) -> ZkResult<Self> {
-        root.into().try_into()
-    }
+    pub async fn parse(root: impl Into<PathBuf>) -> ZkResult<Self> {
+        let root = root.into();
 
-    /// WARN: Blocking
-    pub fn watch(&self) {
-        todo!()
-    }
-}
-
-impl TryFrom<PathBuf> for Kasten {
-    type Error = ZkError;
-
-    //TODO: Parallelize the shit out of this dawg
-    fn try_from(root: PathBuf) -> Result<Self, Self::Error> {
         // get metadata
         let mut _metadata = Metadata::parse(root.clone())
             .map_err(|e| ZkError::ParseError(format!("Failed to parse metadata: {e:?}")))?;
@@ -171,8 +168,40 @@ impl TryFrom<PathBuf> for Kasten {
             }
         }
 
-        let kasten = Kasten { graph, _root: root };
+        // now we can connect to db
+
+        let db = EmergenceDb::connect(root.clone()).await?;
+        let kasten = Kasten {
+            graph: Arc::new(Mutex::new(graph)),
+            _root: root,
+            db,
+        };
 
         Ok(kasten)
+    }
+
+    /// WARN: Blocking
+    pub fn watch(&self) -> ZkResult<()> {
+        let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
+
+        // Use recommended_watcher() to automatically select the best implementation
+        // for your platform. The `EventHandler` passed to this constructor can be a
+        // closure, a `std::sync::mpsc::Sender`, a `crossbeam_channel::Sender`, or
+        // another type the trait is implemented for.
+        let mut watcher = notify::recommended_watcher(tx)?;
+
+        // Add a path to be watched. All files and directories at that path and
+        // below will be monitored for changes.
+        watcher.watch(Path::new(&self._root), RecursiveMode::Recursive)?;
+        // Block forever, printing out events as they come in
+
+        loop {
+            for res in &rx {
+                match res {
+                    Ok(event) => println!("event: {:#?}", event),
+                    Err(e) => println!("watch error: {:#?}", e),
+                }
+            }
+        }
     }
 }

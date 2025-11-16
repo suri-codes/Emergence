@@ -9,21 +9,21 @@ const DATE_FMT_STR: &str = "%Y-%m-%d %I:%M:%S %p";
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct FrontMatter {
-    pub name: String,
+    pub title: String,
     pub created_at: NaiveDateTime,
     pub tag_strings: Vec<String>,
 }
 
 impl FrontMatter {
     pub fn new(
-        name: impl Into<String>,
+        title: impl Into<String>,
         created_at: NaiveDateTime,
         tag_strings: Vec<impl Into<String>>,
     ) -> Self {
         let tag_strings = tag_strings.into_iter().map(|e| e.into()).collect();
 
         FrontMatter {
-            name: name.into(),
+            title: title.into(),
             created_at,
             tag_strings,
         }
@@ -33,7 +33,7 @@ impl FrontMatter {
     /// expected format for front matter as follows
     ///```md
     /// ---
-    /// Name: LOL
+    /// Title: LOL
     /// Date: 2025-01-01 12:50:19 AM
     /// Tags: #Daily{#ffffff} #barber{#000000}
     /// ---
@@ -52,7 +52,7 @@ impl FrontMatter {
     /// expected format for front matter as follows
     ///```md
     /// ---
-    /// Name: LOL
+    /// Title: LOL
     /// Date: 2025-01-01 12:50:19 AM
     /// Tags: #Daily{#ffffff} #barber{#000000}
     /// ---
@@ -82,10 +82,10 @@ impl FrontMatter {
         delim_check(0)?;
 
         //extract name
-        let name = lines
+        let title = lines
             .get(1)
-            .ok_or(ZkError::ParseError("Name line doesn't exist!".to_owned()))?
-            .strip_prefix("Name: ")
+            .ok_or(ZkError::ParseError("Title line doesn't exist!".to_owned()))?
+            .strip_prefix("Title: ")
             .ok_or(ZkError::ParseError(
                 "Name line doesn't start with \"Name: \" ".to_owned(),
             ))?;
@@ -115,7 +115,7 @@ impl FrontMatter {
 
         let remaining = lines[5..].join("\n");
 
-        Ok((FrontMatter::new(name, created_at, tag_strings), remaining))
+        Ok((FrontMatter::new(title, created_at, tag_strings), remaining))
     }
 }
 
@@ -123,7 +123,7 @@ impl Display for FrontMatter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let date_fmt_items = StrftimeItems::new(DATE_FMT_STR);
         writeln!(f, "---")?;
-        writeln!(f, "Name: {}", self.name)?;
+        writeln!(f, "Name: {}", self.title)?;
         writeln!(
             f,
             "Date: {}",

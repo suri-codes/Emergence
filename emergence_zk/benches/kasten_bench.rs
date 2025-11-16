@@ -14,6 +14,7 @@ fn expensive_computation(n: u64) -> f64 {
     // Perform many floating point operations
     for i in 1..1000 {
         result = (result * PI).sin().abs();
+
         result += (i as f64).sqrt();
         result = result.ln_1p().exp();
     }

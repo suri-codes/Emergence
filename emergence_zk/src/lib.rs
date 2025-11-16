@@ -1,3 +1,5 @@
+// #![warn(missing_debug_implementations, missing_docs)]
+mod db;
 mod error;
 mod frontmatter;
 mod id;
@@ -7,6 +9,7 @@ mod metadata;
 mod tag;
 mod zettel;
 
+pub use db::*;
 pub use error::*;
 pub use frontmatter::*;
 pub use id::*;

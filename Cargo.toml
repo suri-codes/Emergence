@@ -1,5 +1,5 @@
 [workspace]
-members = [ "emergence", "emergence_zk","emergence_lsp", "emergence_cli"]
+members = [ "emergence", "emergence_zk","emergence_lsp", "emergence_cli" , "emergence_zk/migration"]
 resolver="3"
 
 

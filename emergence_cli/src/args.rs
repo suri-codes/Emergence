@@ -14,17 +14,21 @@ pub enum Commands {
 
     /// Creates a new Zettel
     New(NewArgs),
-    // #[command(subcommand)]
-    // Group(GroupSubcommand),
 
-    // #[command(subcommand)]
-    // Task(TaskSubcommand),
+    /// Lists Zettels
+    List,
 
-    // Export(ExportArgs),
+    Test, // #[command(subcommand)]
+          // Group(GroupSubcommand),
 
-    // default values if they arent present / aren't able to be
-    // parsed properly
-    // Import(ImportArgs),
+          // #[command(subcommand)]
+          // Task(TaskSubcommand),
+
+          // Export(ExportArgs),
+
+          // default values if they arent present / aren't able to be
+          // parsed properly
+          // Import(ImportArgs),
 }
 
 #[derive(Debug, Args)]

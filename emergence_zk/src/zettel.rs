@@ -2,9 +2,10 @@ use std::io::Write;
 use std::{fs::OpenOptions, path::PathBuf};
 
 use chrono::Local;
+use sea_orm::ActiveModelTrait;
 use serde::{Deserialize, Serialize};
 
-use crate::{FrontMatter, Metadata, Tag, ZettelId, ZkResult};
+use crate::{EmergenceDb, FrontMatter, Metadata, Tag, ZettelId, ZkResult, entities, zettel};
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct Zettel {
@@ -31,18 +32,28 @@ impl Zettel {
             content,
         }
     }
+
+    pub fn active_model(&self) -> entities::zettel::ActiveModel {
+        entities::zettel::ActiveModel {
+            nanoid: sea_orm::ActiveValue::Set(self.id.to_string()),
+            title: sea_orm::ActiveValue::Set(self.front_matter.title.clone()),
+            ..Default::default()
+        }
+    }
 }
+
+
 
 pub struct ZettelBuilder {
     inner: Zettel,
 }
 
 impl ZettelBuilder {
-    pub fn new(metadata: &Metadata) -> Self {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
         let id = ZettelId::default();
 
         let zettel_path = {
-            let mut project_root = metadata.project_root.clone();
+            let mut project_root = root.into();
             project_root.push([id.as_str(), ".md"].join(""));
             project_root
         };
@@ -63,7 +74,7 @@ impl ZettelBuilder {
     // methods for mutating inner state
 
     pub fn name(&mut self, name: impl Into<String>) {
-        self.inner.front_matter.name = name.into();
+        self.inner.front_matter.title = name.into();
     }
 
     pub fn add_tag(&mut self, tag: Tag) {
@@ -77,7 +88,7 @@ impl ZettelBuilder {
     // methods for builder pattern
 
     pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.inner.front_matter.name = name.into();
+        self.inner.front_matter.title = name.into();
         self
     }
 
@@ -92,7 +103,7 @@ impl ZettelBuilder {
         self
     }
 
-    pub fn build(mut self) -> ZkResult<Zettel> {
+    pub async fn build(mut self, db: &EmergenceDb) -> ZkResult<Zettel> {
         let now = Local::now().naive_local();
 
         // set created_at to build time
@@ -106,6 +117,10 @@ impl ZettelBuilder {
 
         writeln!(f, "{}", self.inner.front_matter)?;
         writeln!(f, "{}", self.inner.content)?;
+
+        let am = self.inner.active_model();
+
+        am.insert(db.as_ref()).await?;
 
         Ok(self.inner)
     }
