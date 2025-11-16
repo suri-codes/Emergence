@@ -4,7 +4,5 @@ mod zkreator;
 
 #[test]
 fn test_basic() {
-    let creator = ZKreator::new(5, 5);
-
-    
+    let _creator = ZKreator::new(5, 5);
 }

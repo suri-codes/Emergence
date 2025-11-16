@@ -1,22 +1,18 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::path::PathBuf;
 
-use petgraph::prelude::StableUnGraph;
-use pulldown_cmark::{Event, Parser, Tag};
-use rayon::iter::{ParallelBridge, ParallelIterator};
 use sea_orm::{Database, DatabaseConnection};
-use tracing::error;
-
-use crate::{FrontMatter, Link, Zettel, ZettelId, ZkGraph, ZkResult};
 
 pub mod entities;
 pub use sea_orm::entity;
 
 use migration::{Migrator, MigratorTrait};
 
+use crate::ZkResult;
+
 #[derive(Debug, Clone)]
 pub struct EmergenceDb {
     inner: DatabaseConnection,
-    root: PathBuf,
+    _root: PathBuf,
 }
 
 impl AsRef<DatabaseConnection> for EmergenceDb {
@@ -42,7 +38,7 @@ impl EmergenceDb {
 
         Ok(Self {
             inner: db,
-            root: root_folder,
+            _root: root_folder,
         })
     }
 

@@ -1,7 +1,7 @@
 use emergence_zk::{
     ZettelId,
     entities::{tag, zettel, zettel_tag},
-    entity::{ActiveModelTrait, EntityTrait, IntoActiveModel},
+    entity::{ActiveModelTrait as _, EntityTrait as _},
 };
 use std::{
     env::{self, current_dir},

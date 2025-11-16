@@ -1,8 +1,9 @@
 use std::{env::current_dir, path::PathBuf};
 
-use emergence_zk::{Kasten, ZettelBuilder, ZettelId, ZkError, ZkGraph, ZkResult, entities};
+use emergence_zk::{Kasten, ZettelBuilder, ZettelId, ZkGraph, ZkResult, entities};
 use sea_orm::EntityTrait;
 
+#[expect(unused)]
 pub struct ZKreator {
     num_nodes: u32,
     num_edges: u32,
@@ -21,6 +22,7 @@ impl ZKreator {
     }
 
     /// creates allat
+    #[expect(unused)]
     pub async fn create(self) -> ZkResult<PathBuf> {
         let rand = ZettelId::default();
 

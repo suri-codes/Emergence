@@ -2,14 +2,12 @@ use std::io::Write;
 use std::{fs::OpenOptions, path::PathBuf};
 
 use chrono::Local;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter, query::*,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
 use serde::{Deserialize, Serialize};
 
-use crate::{EmergenceDb, Tag, Workspace, ZettelId, ZkError, ZkResult, entities};
+use crate::{EmergenceDb, Tag, Workspace, ZettelId, ZkResult, entities};
 
-use crate::entities::{prelude::*, tag, zettel_tag};
+use crate::entities::{prelude::*, tag, zettel, zettel_tag};
 
 mod frontmatter;
 pub use frontmatter::*;
@@ -61,15 +59,14 @@ impl Zettel {
 
         let mut zettel_tags = vec![];
 
-        for tag in ZettelEntity::load()
+        let zettel_db = ZettelEntity::load()
             .with(TagEntity)
             .filter_by_nanoid(id.as_str())
             .one(ws.db.as_ref())
             .await?
-            .expect("zettel missing from db!")
-            .tags
-            .into_iter()
-        {
+            .unwrap_or_else(|| panic!("zettel missing from db! :{id:?}"));
+
+        for tag in zettel_db.tags.into_iter() {
             if let Ok(idx) = zettel_tag_strings.binary_search(&tag.name) {
                 // we remove tags we have already processed
                 zettel_tag_strings.remove(idx);
@@ -98,14 +95,32 @@ impl Zettel {
         //
         for new_tag in zettel_tag_strings {
             let am = tag::ActiveModel {
+                nanoid: sea_orm::ActiveValue::Set(ZettelId::default().to_string()),
                 name: sea_orm::ActiveValue::Set(new_tag),
                 color: sea_orm::ActiveValue::Set("random".to_owned()),
+
                 ..Default::default()
             };
 
             let x = am.insert(ws.db.as_ref()).await?;
+
+            let am = zettel_tag::ActiveModel {
+                zettel_nano_id: sea_orm::ActiveValue::Set(id.to_string()),
+                tag_nano_id: sea_orm::ActiveValue::Set(x.nanoid.clone()),
+            };
+
+            let _ = am.insert(ws.db.as_ref()).await?;
+
             zettel_tags.push(Tag::from(x));
         }
+
+        let am = zettel::ActiveModel {
+            id: sea_orm::ActiveValue::Unchanged(zettel_db.id),
+            title: sea_orm::ActiveValue::Set(front_matter.title.clone()),
+            ..Default::default()
+        };
+
+        am.update(ws.db.as_ref()).await?;
 
         Ok(Zettel {
             path,

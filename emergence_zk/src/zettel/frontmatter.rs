@@ -35,7 +35,7 @@ impl FrontMatter {
     /// ---
     /// Title: LOL
     /// Date: 2025-01-01 12:50:19 AM
-    /// Tags: #Daily{#ffffff} #barber{#000000}
+    /// Tags: Daily barber
     /// ---
     /// ```
     pub fn extract_from_file(path: impl AsRef<Path>) -> ZkResult<(Self, String)> {
@@ -54,7 +54,7 @@ impl FrontMatter {
     /// ---
     /// Title: LOL
     /// Date: 2025-01-01 12:50:19 AM
-    /// Tags: #Daily{#ffffff} #barber{#000000}
+    /// Tags: Daily barber
     /// ---
     /// ```
     pub fn extract_from_str(string: impl Into<String>) -> ZkResult<(Self, String)> {

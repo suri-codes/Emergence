@@ -73,6 +73,8 @@ impl TryFrom<&Path> for ZettelId {
             .ok_or(ZkError::ParseError(
                 "File Name cannot be translated into str!".to_owned(),
             ))?
+            .strip_suffix(".md")
+            .expect("we statically verify this right above")
             .into();
 
         Ok(id)

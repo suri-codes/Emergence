@@ -11,7 +11,7 @@ use petgraph::prelude::StableUnGraph;
 use pulldown_cmark::{Event, Parser, Tag as MkTag};
 use rayon::prelude::*;
 
-use crate::{EmergenceDb, FrontMatter, Link, Zettel, ZettelId, ZkError, ZkResult};
+use crate::{EmergenceDb, FrontMatter, Link, Workspace, Zettel, ZettelId, ZkResult};
 
 pub type ZkGraph = StableUnGraph<Zettel, Link>;
 
@@ -19,6 +19,9 @@ pub type ZkGraph = StableUnGraph<Zettel, Link>;
 pub struct Kasten {
     pub graph: Arc<Mutex<ZkGraph>>,
     pub db: EmergenceDb,
+
+    pub ws: Workspace,
+
     _root: PathBuf,
 }
 
@@ -45,11 +48,13 @@ impl Kasten {
 
         let graph: ZkGraph = StableUnGraph::with_capacity(GRAPH_MAX_NODES, GRAPH_MAX_EDGES);
 
+        let ws = Workspace::new(&dest).await?;
         let db = EmergenceDb::connect(dest.clone()).await?;
 
         // okay now we have a new thingy
         let me = Self {
             graph: Arc::new(Mutex::new(graph)),
+            ws,
             _root: dest,
             db,
         };
@@ -171,9 +176,12 @@ impl Kasten {
         // now we can connect to db
 
         let db = EmergenceDb::connect(root.clone()).await?;
+
+        let ws = Workspace::new(&root).await?;
         let kasten = Kasten {
             graph: Arc::new(Mutex::new(graph)),
             _root: root,
+            ws,
             db,
         };
 
@@ -181,7 +189,7 @@ impl Kasten {
     }
 
     /// WARN: Blocking
-    pub fn watch(&self) -> ZkResult<()> {
+    pub async fn watch(&self) -> ZkResult<()> {
         let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
 
         // Use recommended_watcher() to automatically select the best implementation
@@ -195,13 +203,26 @@ impl Kasten {
         watcher.watch(Path::new(&self._root), RecursiveMode::Recursive)?;
         // Block forever, printing out events as they come in
 
-        loop {
-            for res in &rx {
-                match res {
-                    Ok(event) => println!("event: {:#?}", event),
-                    Err(e) => println!("watch error: {:#?}", e),
+        while let Ok(res) = rx.recv() {
+            match res {
+                Ok(event) => {
+                    println!("event: {:#?}", event);
+                    if let notify::EventKind::Modify(notify::event::ModifyKind::Data(_)) =
+                        event.kind
+                    {
+                        for path in event.paths {
+                            println!("hello?");
+
+                            let z = Zettel::from_path(path, &self.ws).await;
+
+                            println!("{z:#?}")
+                        }
+                    }
                 }
+                Err(e) => println!("watch error: {:#?}", e),
             }
         }
+
+        Ok(())
     }
 }

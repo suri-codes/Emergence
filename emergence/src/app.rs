@@ -2,9 +2,7 @@ use egui::Color32;
 use egui_async::{Bind, EguiAsyncPlugin};
 use egui_graphs::Graph;
 use emergence_zk::{Kasten, Link, Zettel, ZkError};
-use log::error;
 use petgraph::{Undirected, graph::NodeIndex};
-use tokio::task::{block_in_place, spawn_blocking};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 // #[derive(serde::Deserialize, serde::Serialize)]
@@ -19,7 +17,7 @@ pub struct EmergenceApp {
     // #[serde(skip)] // This how you opt-out of serialization of a field
     graph: EmerGraph,
 
-    kasten_bind: Bind<Kasten, ZkError>,
+    _kasten_bind: Bind<Kasten, ZkError>,
 }
 
 type EmerGraph = Graph<Zettel, Link, Undirected>;
@@ -64,7 +62,7 @@ impl EmergenceApp {
         };
 
         let x = kasten.clone();
-        tokio::spawn(async move { x.watch() });
+        tokio::spawn(async move { x.watch().await });
 
         let k_graph = &kasten.graph.lock().unwrap().clone();
 
@@ -89,14 +87,14 @@ impl EmergenceApp {
             label: "Hello orld!".to_owned(),
             value: 2.7,
             graph,
-            kasten_bind: Bind::default(),
+            _kasten_bind: Bind::default(),
         }
     }
 }
 
 impl eframe::App for EmergenceApp {
     /// Called by the framework to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
         // eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
