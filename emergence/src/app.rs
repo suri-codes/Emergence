@@ -49,7 +49,7 @@ impl EmergenceApp {
         let (tx, mut rx) = tokio::sync::oneshot::channel();
 
         tokio::spawn(async move {
-            let kasten = Kasten::parse("./emergence_zk/zkreator_vjy12")
+            let kasten = Kasten::parse("./emergence_zk/zkreator_8hx8i")
                 .await
                 .unwrap();
             tx.send(kasten).unwrap();

@@ -62,6 +62,7 @@ impl Zettel {
 
         let mut zettel_tags = vec![];
 
+        // this should probably work like it
         let db_zettel = ZettelEntity::load()
             .with(TagEntity)
             .filter_by_nanoid(id.as_str())
