@@ -23,7 +23,7 @@ impl ZettelId {
 
 impl Default for ZettelId {
     fn default() -> Self {
-        ZettelId(nanoid!(5, &ALPHABET))
+        ZettelId(nanoid!(7, &ALPHABET))
     }
 }
 

@@ -4,11 +4,13 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use pulldown_cmark::{Event, Parser, Tag as MkTag};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, TryIntoModel,
+};
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{Instrument, error, info};
 
-use crate::{Link, Tag, Workspace, ZettelId, ZkResult};
+use crate::{Link, Tag, Workspace, ZettelId, ZkResult, entities};
 
 use crate::entities::{prelude::*, tag, zettel, zettel_tag};
 
@@ -60,7 +62,7 @@ impl Zettel {
 
         for event in parsed {
             if let Event::Start(MkTag::Link { dest_url, .. }) = event {
-                println!("Found dest_url: {dest_url:#?}");
+                // println!("Found dest_url: {dest_url:#?}");
                 let dest_path = {
                     let mut tmp_root = ws.root.clone();
                     tmp_root.push(dest_url.into_string());
@@ -100,12 +102,31 @@ impl Zettel {
         let mut zettel_tags = vec![];
 
         // this should probably work like it
-        let db_zettel = ZettelEntity::load()
+        let db_zettel = if let Some(z) = ZettelEntity::load()
             .with(TagEntity)
             .filter_by_nanoid(id.as_str())
             .one(ws.db.as_ref())
             .await?
-            .unwrap_or_else(|| panic!("zettel missing from db! :{id:?}"));
+        {
+            z
+        } else {
+            // if zettel is missing from db, we just add it here
+            info!("adding zettel to db");
+            let am = entities::zettel::ActiveModel {
+                nanoid: sea_orm::ActiveValue::Set(id.to_string()),
+                title: sea_orm::ActiveValue::Set(front_matter.title.clone()),
+                ..Default::default()
+            };
+
+            am.insert(ws.db.as_ref()).await?;
+
+            ZettelEntity::load()
+                .with(TagEntity)
+                .filter_by_nanoid(id.as_str())
+                .one(ws.db.as_ref())
+                .await?
+                .expect("we just inserted the zettel")
+        };
 
         for db_tag in db_zettel.tags.into_iter() {
             if let Ok(idx) = zettel_tag_strings.binary_search(&db_tag.name) {

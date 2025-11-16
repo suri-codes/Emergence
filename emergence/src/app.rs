@@ -2,7 +2,7 @@ use egui::Color32;
 use egui_async::{Bind, EguiAsyncPlugin};
 use egui_graphs::Graph;
 use emergence_zk::{Kasten, Link, Zettel, ZkError};
-use petgraph::{Undirected, graph::NodeIndex};
+use petgraph::{Directed, Undirected, graph::NodeIndex};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 // #[derive(serde::Deserialize, serde::Serialize)]
@@ -20,7 +20,8 @@ pub struct EmergenceApp {
     _kasten_bind: Bind<Kasten, ZkError>,
 }
 
-type EmerGraph = Graph<Zettel, Link, Undirected>;
+// type EmerGraph = Graph<Arc<Zettel>, Link, Undirected>;
+type EmerGraph = Graph<Zettel, Link, Directed>;
 
 impl EmergenceApp {
     /// Called once before the first frame.
@@ -49,9 +50,7 @@ impl EmergenceApp {
         let (tx, mut rx) = tokio::sync::oneshot::channel();
 
         tokio::spawn(async move {
-            let kasten = Kasten::parse("./emergence_zk/zkreator_8hx8i")
-                .await
-                .unwrap();
+            let kasten = Kasten::parse("../personal_ezk").await.unwrap();
             tx.send(kasten).unwrap();
         });
 
@@ -63,7 +62,7 @@ impl EmergenceApp {
             };
         };
 
-        let x = kasten.clone();
+        let mut x = kasten.clone();
         tokio::spawn(async move { x.watch().await });
 
         let k_graph = &kasten.graph.lock().unwrap().clone();

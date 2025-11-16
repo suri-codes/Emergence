@@ -1,5 +1,5 @@
 use emergence_zk::{
-    ZettelId,
+    Workspace, ZettelId,
     entities::{tag, zettel, zettel_tag},
     entity::{ActiveModelTrait as _, EntityTrait as _},
 };
@@ -51,19 +51,19 @@ async fn main() -> Result<()> {
             // let _: Kasten = Kasten::parse(&pwd)
             //     .inspect_err(|e| eprintln!("You arent in a valid kasten! {e}"))?;
 
-            let db = EmergenceDb::connect(pwd.clone()).await?;
+            let ws = Workspace::new(pwd).await?;
 
-            let mut zb = ZettelBuilder::new(pwd);
+            let mut zb = ZettelBuilder::new(&ws);
 
             if let Some(name) = args.name {
                 zb.name(name);
             }
 
             for tag in args.tags {
-                zb.add_tag(Tag::new(tag, "penis")?);
+                zb.add_tag(Tag::new(tag, "penis", &ws).await?);
             }
 
-            let z: Zettel = zb.build(&db).await?;
+            let z: Zettel = zb.build().await?;
 
             let editor = env::var("EDITOR")
                 .or_else(|_| env::var("VISUAL"))

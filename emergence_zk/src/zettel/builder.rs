@@ -1,21 +1,22 @@
+use std::fs::OpenOptions;
 use std::io::Write;
-use std::{fs::OpenOptions, path::PathBuf};
 
 use chrono::Local;
 use sea_orm::ActiveModelTrait as _;
 
-use crate::{EmergenceDb, FrontMatter, Tag, Zettel, ZettelId, ZkResult, entities};
+use crate::{FrontMatter, Tag, Workspace, Zettel, ZettelId, ZkResult, entities};
 
-pub struct ZettelBuilder {
+pub struct ZettelBuilder<'a> {
+    ws: &'a Workspace,
     inner: Zettel,
 }
 
-impl ZettelBuilder {
-    pub fn new(root: impl Into<PathBuf>) -> Self {
+impl<'a> ZettelBuilder<'a> {
+    pub fn new(ws: &'a Workspace) -> Self {
         let id = ZettelId::default();
 
         let zettel_path = {
-            let mut project_root = root.into();
+            let mut project_root = ws.root.clone();
             project_root.push([id.as_str(), ".md"].join(""));
             project_root
         };
@@ -23,6 +24,7 @@ impl ZettelBuilder {
         let front_matter = FrontMatter::new("", Local::now().naive_local(), Vec::<String>::new());
 
         ZettelBuilder {
+            ws,
             inner: Zettel {
                 id,
                 path: zettel_path,
@@ -66,7 +68,7 @@ impl ZettelBuilder {
         self
     }
 
-    pub async fn build(mut self, db: &EmergenceDb) -> ZkResult<Zettel> {
+    pub async fn build(mut self) -> ZkResult<Zettel> {
         let now = Local::now().naive_local();
 
         // set created_at to build time
@@ -87,7 +89,7 @@ impl ZettelBuilder {
             ..Default::default()
         };
 
-        am.insert(db.as_ref()).await?;
+        am.insert(self.ws.db.as_ref()).await?;
 
         Ok(self.inner)
     }

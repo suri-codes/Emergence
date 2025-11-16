@@ -1,7 +1,6 @@
 use std::{env::current_dir, path::PathBuf};
 
-use emergence_zk::{Kasten, Zettel, ZettelBuilder, ZettelId, ZkGraph, ZkResult, entities};
-use sea_orm::EntityTrait;
+use emergence_zk::{Kasten, ZettelBuilder, ZettelId, ZkGraph, ZkResult};
 
 #[expect(unused)]
 pub struct ZKreator {
@@ -38,10 +37,7 @@ impl ZKreator {
         // created zettels
         let mut zettels = Vec::new();
         for _ in 0..self.num_nodes {
-            let z = ZettelBuilder::new(x.root())
-                .with_title("test")
-                .build(&x.db)
-                .await?;
+            let z = ZettelBuilder::new(ws).with_title("test").build().await?;
 
             zettels.push(z.clone());
         }

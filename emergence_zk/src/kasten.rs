@@ -5,24 +5,26 @@ use std::{
     sync::{Arc, Mutex, mpsc},
 };
 
-use log::error;
 use notify::{RecursiveMode, Watcher};
-use petgraph::prelude::StableUnGraph;
-use pulldown_cmark::{Event, Parser, Tag as MkTag};
+use petgraph::{
+    graph::NodeIndex,
+    prelude::{StableGraph, StableUnGraph},
+    visit::EdgeRef,
+};
 use rayon::prelude::*;
+use tokio::time::Instant;
 
-use crate::{EmergenceDb, FrontMatter, Link, Workspace, Zettel, ZettelId, ZkResult};
+use crate::{Link, Workspace, Zettel, ZettelId, ZkResult};
 
-pub type ZkGraph = StableUnGraph<Zettel, Link>;
+// pub type ZkGraph = StableUnGraph<Arc<Zettel>, Link>;
+pub type ZkGraph = StableGraph<Zettel, Link>;
 
 #[derive(Debug, Clone)]
 pub struct Kasten {
     pub graph: Arc<Mutex<ZkGraph>>,
-    pub db: EmergenceDb,
 
     pub ws: Workspace,
-
-    _root: PathBuf,
+    pub zid_to_gid: HashMap<ZettelId, NodeIndex>,
 }
 
 /// maximum number of nodes in our graph, setting at this arbitrary number because im not sure
@@ -46,24 +48,18 @@ impl Kasten {
 
         fs::create_dir_all(our_folder)?;
 
-        let graph: ZkGraph = StableUnGraph::with_capacity(GRAPH_MAX_NODES, GRAPH_MAX_EDGES);
+        let graph: ZkGraph = StableGraph::with_capacity(GRAPH_MAX_NODES, GRAPH_MAX_EDGES);
 
         let ws = Workspace::new(&dest).await?;
-        let db = EmergenceDb::connect(dest.clone()).await?;
 
         // okay now we have a new thingy
         let me = Self {
             graph: Arc::new(Mutex::new(graph)),
             ws,
-            _root: dest,
-            db,
+            zid_to_gid: HashMap::new(),
         };
 
         Ok(me)
-    }
-
-    pub fn root(&self) -> &Path {
-        &self._root
     }
 
     /// Parses a Kasten from the specified `root`.
@@ -72,124 +68,77 @@ impl Kasten {
     /// # Errors
     /// This function can error if any file-system operation fails.  
     pub async fn parse(root: impl Into<PathBuf>) -> ZkResult<Self> {
+        let start = Instant::now();
         let root = root.into();
 
-        let valid_parsed_files = fs::read_dir(&root)?
+        let ws = Workspace::new(&root).await?;
+
+        let paths = fs::read_dir(&root)?
             .par_bridge()
             .flatten()
-            .filter_map(|entry| match entry.file_type() {
-                Ok(ft)
-                    if ft.is_file()
-                        && entry
-                            .path()
-                            .extension()
-                            .and_then(|ext| ext.to_str())
-                            .map(|ext| ext == "md")
-                            .unwrap_or(false) =>
-                {
-                    // we want to have a type of
-                    let f_str = fs::read_to_string(entry.path())
-                        .inspect_err(|e| error!("error reading from file {entry:?}: {e:?}"))
-                        .ok()?;
-
-                    let (front_matter, content) = FrontMatter::extract_from_str(&f_str)
-                        .inspect_err(|e| error!("Error parsing frontmatter for {entry:?}: {e:?}"))
-                        .ok()?;
-
-                    let zettel_id: ZettelId = entry
+            .filter(|entry| {
+                entry.file_type().map(|ft| ft.is_file()).unwrap_or(false)
+                    && entry
                         .path()
-                        .try_into()
-                        .inspect_err(|e| {
-                            error!("Error parsing ZettelId from {:?}: {e:?}", entry.path())
-                        })
-                        .ok()?;
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                        .map(|ext| ext == "md")
+                        .unwrap_or(false)
+            })
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
 
-                    //TODO: update the metadata
-                    // i guess we can update the front_matter right here
-
-                    Some((front_matter, content, entry.path(), zettel_id))
-                }
-                _ => None,
+        // spawn all the zettel tasks
+        let zettel_tasks = paths
+            .into_iter()
+            .map(|path| {
+                let ws = ws.clone(); // Clone Arc or whatever ws is
+                tokio::spawn(async move { Zettel::from_path(path, &ws).await })
             })
             .collect::<Vec<_>>();
 
-        let mut valid_zettels = Vec::new();
+        // await all of them
+        let zettels = futures::future::join_all(zettel_tasks)
+            .await
+            .into_iter()
+            .filter_map(
+                |result| result.ok()?.ok(), // .map(|z| Arc::new(z) )
+            )
+            // .collect::<Vec<Arc<Zettel>>>();
+            .collect::<Vec<Zettel>>();
+        let mut graph: ZkGraph = StableGraph::with_capacity(zettels.len(), zettels.len() * 3);
 
-        let mut path_to_zid = HashMap::new();
+        // now we have to update the graph
 
-        // here we make all the zettels
-        for (front_matter, content, path, id) in valid_parsed_files {
-            // here we just have to get the tags
-            let zettel = Zettel::new(id, path, front_matter, Vec::new(), content);
-
-            let _ = path_to_zid.insert(zettel.path.canonicalize()?, zettel.id.clone());
-
-            valid_zettels.push(zettel)
+        let mut zid_to_gid = HashMap::new();
+        for zettel in &zettels {
+            let id = graph.add_node(zettel.clone());
+            zid_to_gid.insert(zettel.id.clone(), id);
         }
 
-        // now we can see if the zettels link to eachother
-        let mut graph: ZkGraph =
-            StableUnGraph::with_capacity(valid_zettels.len(), valid_zettels.len() * 3);
-
-        let mut zid_to_nodeidx = HashMap::new();
-
-        for zettel in valid_zettels.clone() {
-            let id = zettel.id.clone();
-            let nid = graph.add_node(zettel);
-            zid_to_nodeidx.insert(id, nid);
-        }
-
-        for zettel in valid_zettels {
-            let parsed = Parser::new(&zettel.content);
-
-            for event in parsed {
-                if let Event::Start(MkTag::Link { dest_url, .. }) = event {
-                    println!("Found dest_url: {dest_url:#?}");
-                    let dest_path = {
-                        let mut tmp_root = root.clone();
-                        tmp_root.push(dest_url.into_string());
-                        tmp_root
-                    };
-                    let canon_url = match dest_path.canonicalize() {
-                        Ok(canon_url) => {
-                            println!("Found canon url: {canon_url:#?}");
-
-                            canon_url
-                        }
-                        Err(_) => {
-                            continue;
-                        }
-                    };
-
-                    if let Some(dest_zid) = path_to_zid.get(&canon_url) {
-                        let link = Link::new(&zettel.id, dest_zid);
-
-                        let src = *zid_to_nodeidx.get(&zettel.id).expect("this must exist");
-                        let dest = *zid_to_nodeidx.get(dest_zid).expect("this must exist");
-
-                        graph.add_edge(src, dest, link);
-                    }
-                }
+        for zettel in &zettels {
+            let src = zid_to_gid.get(&zettel.id).expect("must exist");
+            for link in &zettel.links {
+                let dst = zid_to_gid.get(&link.dest).expect("must exist");
+                graph.add_edge(*src, *dst, link.clone());
             }
         }
 
-        // now we can connect to db
-
-        let db = EmergenceDb::connect(root.clone()).await?;
-
-        let ws = Workspace::new(&root).await?;
         let kasten = Kasten {
             graph: Arc::new(Mutex::new(graph)),
-            _root: root,
             ws,
-            db,
+            zid_to_gid,
         };
+
+        let end = start.elapsed();
+
+        println!("time taken to parse workspace: {end:#?}");
 
         Ok(kasten)
     }
 
     /// WARN: Blocking
-    pub async fn watch(&self) -> ZkResult<()> {
+    pub async fn watch(&mut self) -> ZkResult<()> {
         let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
 
         // Use recommended_watcher() to automatically select the best implementation
@@ -200,7 +149,7 @@ impl Kasten {
 
         // Add a path to be watched. All files and directories at that path and
         // below will be monitored for changes.
-        watcher.watch(Path::new(&self._root), RecursiveMode::Recursive)?;
+        watcher.watch(Path::new(&self.ws.root), RecursiveMode::Recursive)?;
         // Block forever, printing out events as they come in
 
         while let Ok(res) = rx.recv() {
@@ -211,11 +160,34 @@ impl Kasten {
                         event.kind
                     {
                         for path in event.paths {
-                            println!("hello?");
+                            let z = Zettel::from_path(path, &self.ws).await?;
 
-                            let z = Zettel::from_path(path, &self.ws).await;
+                            println!("zettel: {z:#?}");
+                            let gid = *self
+                                .zid_to_gid
+                                .get(&z.id)
+                                .expect("the id should not change");
 
-                            println!("{z:#?}")
+                            let mut graph = self.graph.lock().unwrap();
+
+                            let x = graph.node_weight_mut(gid).expect("must exist");
+
+                            (*x) = z.clone();
+
+                            let curr_edgs = graph.edges(gid).map(|e| e.id()).collect::<Vec<_>>();
+
+                            for edge in curr_edgs {
+                                let _ = graph.remove_edge(edge);
+                            }
+
+                            for link in z.links {
+                                let dest = self.zid_to_gid.get(&link.dest).expect("must exist");
+                                graph.add_edge(gid, *dest, link);
+                                // graph.add_edge(a, b, weight)
+                            }
+
+                            println!("graph: {graph:#?}");
+                            drop(graph)
                         }
                     }
                 }

@@ -1,8 +1,9 @@
 use std::{collections::HashMap, fmt::Display};
 
+use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use serde::{Deserialize, Serialize};
 
-use crate::{ZkError, ZkResult, entities::tag};
+use crate::{Workspace, ZettelId, ZkError, ZkResult, entities::prelude::*, entities::tag};
 
 //TODO: think about how we want to deal with tags
 
@@ -16,7 +17,11 @@ pub struct Tag {
 pub type TagMap = HashMap<String, Tag>;
 
 impl Tag {
-    pub fn new(name: impl Into<String>, color: impl Into<String>) -> ZkResult<Self> {
+    pub async fn new(
+        name: impl Into<String>,
+        color: impl Into<String>,
+        ws: &Workspace,
+    ) -> ZkResult<Self> {
         let name = name.into();
         let color = color.into();
         let name = name.to_lowercase();
@@ -25,6 +30,15 @@ impl Tag {
             return Err(ZkError::ParseError("Name isn't valid ascii!".to_owned()));
         }
 
+        let _ = tag::ActiveModel {
+            nanoid: sea_orm::ActiveValue::Set(ZettelId::default().to_string()),
+            name: Set(name.to_owned()),
+            color: Set(color.to_owned()),
+            ..Default::default()
+        }
+        .save(ws.db.as_ref())
+        .await?;
+
         //TODO: color validation or something
 
         // we can do some parse validation here
@@ -32,6 +46,15 @@ impl Tag {
             name: name.to_owned(),
             color: color.to_owned(),
         })
+    }
+
+    pub async fn get_or_new(name: impl Into<String>, ws: &Workspace) -> ZkResult<Self> {
+        let name = name.into();
+        if let Some(existing) = TagEntity::find_by_name(&name).one(ws.db.as_ref()).await? {
+            Ok(existing.into())
+        } else {
+            Self::new(name, "random!", ws).await
+        }
     }
 }
 
