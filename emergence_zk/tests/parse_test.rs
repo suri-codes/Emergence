@@ -4,7 +4,7 @@ mod zkreator;
 
 #[tokio::test]
 async fn test_basic() {
-    let creator = ZKreator::new(1000, 10000);
+    let creator = ZKreator::new(1000, 500);
 
-    creator.create().await;
+    creator.create().await.expect("zkreator is perfect bro.");
 }

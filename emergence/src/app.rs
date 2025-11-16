@@ -49,7 +49,7 @@ impl EmergenceApp {
         let (tx, mut rx) = tokio::sync::oneshot::channel();
 
         tokio::spawn(async move {
-            let kasten = Kasten::parse("./emergence_zk/zkreator_hklpj")
+            let kasten = Kasten::parse("./emergence_zk/zkreator_vjy12")
                 .await
                 .unwrap();
             tx.send(kasten).unwrap();
@@ -154,9 +154,15 @@ impl eframe::App for EmergenceApp {
             // if self.kasten_bind.is_idle() {}
 
             //TODO: this wont update the thing
-            let mut graph_view = egui_graphs::GraphView::<_, _, Undirected>::new(&mut self.graph);
+            // let mut graph_view = egui_graphs::GraphView::<_, _, Undirected>::new(&mut self.graph);
 
-            ui.add(&mut graph_view);
+            type L =
+                egui_graphs::LayoutForceDirected<egui_graphs::FruchtermanReingoldWithCenterGravity>;
+            type S = egui_graphs::FruchtermanReingoldWithCenterGravityState;
+            let mut view = egui_graphs::GraphView::<_, _, _, _, _, _, S, L>::new(&mut self.graph);
+            ui.add(&mut view);
+
+            // ui.add(&mut graph_view);
 
             ui.separator();
 
