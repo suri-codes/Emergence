@@ -122,7 +122,11 @@ impl Kasten {
 
         let mut zid_to_gid = HashMap::new();
         for zettel in &zettels {
-            let id = graph.add_node(zettel.clone());
+            let id = graph.add_node_custom(zettel.clone(), |node| {
+                node.set_label(zettel.front_matter.title.to_owned());
+                let x = node.display_mut();
+                x.radius = 100.0;
+            });
             zid_to_gid.insert(zettel.id.clone(), id);
         }
 
@@ -147,7 +151,6 @@ impl Kasten {
         Ok(kasten)
     }
 
-    /// WARN: Blocking
     pub async fn watch(&mut self) -> ZkResult<()> {
         let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
 
@@ -170,15 +173,29 @@ impl Kasten {
                         event.kind
                     {
                         for path in event.paths {
-                            let z = Zettel::from_path(path, &self.ws).await?;
+                            let Ok(z) = Zettel::from_path(path, &self.ws).await else {
+                                continue;
+                            };
 
                             println!("zettel: {z:#?}");
-                            let gid = *self
-                                .zid_to_gid
-                                .get(&z.id)
-                                .expect("the id should not change");
-
                             let mut graph = self.graph.lock().unwrap();
+                            // actually this has the very real possibility of changing :grin:
+                            let gid = {
+                                match self.zid_to_gid.get(&z.id) {
+                                    Some(gid) => *gid,
+                                    None => {
+                                        // this zettel was created while we have watch open, lets just add
+                                        // it to thegraph and the hashmap
+                                        let gid = graph.add_node_with_label(
+                                            z.clone(),
+                                            z.front_matter.title.clone(),
+                                        );
+
+                                        self.zid_to_gid.insert(z.id.clone(), gid);
+                                        gid
+                                    }
+                                }
+                            };
 
                             let x = graph
                                 .g_mut()
@@ -187,6 +204,13 @@ impl Kasten {
                                 .payload_mut();
 
                             (*x) = z.clone();
+
+                            let x = graph
+                                .g_mut()
+                                .node_weight_mut(gid)
+                                .expect("must exist")
+                                .display_mut();
+                            x.radius = 50.0;
 
                             let curr_edgs = graph
                                 .g()

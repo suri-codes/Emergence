@@ -71,20 +71,6 @@ impl EmergenceApp {
 
         let mut graph = kasten.graph.lock().unwrap().clone();
 
-        let node_ids: Vec<_> = graph
-            .nodes_iter()
-            .map(|(idx, _)| idx)
-            .collect::<Vec<NodeIndex>>();
-
-        for node_idx in node_ids {
-            let node = graph.node_mut(node_idx).expect("must exist");
-            let zettel = &node.props().payload;
-
-            node.set_label(zettel.front_matter.title.clone());
-            // this should be soemthing related to the thing
-            node.set_color(Color32::GREEN);
-        }
-
         Self {
             // Example stuff:
             label: "Hello orld!".to_owned(),
