@@ -1,18 +1,19 @@
 use std::{env::current_dir, path::PathBuf};
 
-use emergence_zk::{Kasten, ZettelBuilder, ZettelId, ZkResult};
+use emergence_zk::{Kasten, ZettelBuilder, ZettelId, ZkGraph, ZkResult};
+use petgraph::prelude::StableGraph;
 
 #[expect(unused)]
 pub struct ZKreator {
-    num_nodes: u32,
-    num_edges: u32,
+    num_nodes: usize,
+    num_edges: usize,
 
     graph: ZkGraph,
 }
 
 impl ZKreator {
-    pub fn new(num_nodes: u32, num_edges: u32) -> Self {
-        let graph = ZkGraph::with_capacity(num_nodes as usize, num_edges as usize);
+    pub fn new(num_nodes: usize, num_edges: usize) -> Self {
+        let graph: ZkGraph = ZkGraph::from(&StableGraph::with_capacity(num_nodes, num_edges));
         ZKreator {
             num_nodes,
             num_edges,

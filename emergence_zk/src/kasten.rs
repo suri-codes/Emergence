@@ -7,21 +7,13 @@ use std::{
 
 use notify::{RecursiveMode, Watcher};
 use petgraph::{Directed, prelude::NodeIndex, prelude::StableGraph};
-// use petgraph::{
-//     graph::NodeIndex,
-//     prelude::{StableGraph, StableUnGraph},
-//     visit::EdgeRef,
-// };
 use rayon::prelude::*;
 use tokio::time::Instant;
 
 use crate::{Link, Workspace, Zettel, ZettelId, ZkResult};
 use egui_graphs::Graph;
 
-// pub type ZkGraph = StableUnGraph<Arc<Zettel>, Link>;
-// pub type ZkGraph = StableGraph<Zettel, Link>;
-// pub type ZkGraph = StableGraph<Zettel, Link>;
-type ZkGraph = Graph<Zettel, Link, Directed>;
+pub type ZkGraph = Graph<Zettel, Link, Directed>;
 
 #[derive(Debug, Clone)]
 pub struct Kasten {
@@ -111,7 +103,6 @@ impl Kasten {
             .filter_map(
                 |result| result.ok()?.ok(), // .map(|z| Arc::new(z) )
             )
-            // .collect::<Vec<Arc<Zettel>>>();
             .collect::<Vec<Zettel>>();
         let mut graph: ZkGraph = ZkGraph::from(&StableGraph::with_capacity(
             zettels.len(),
@@ -123,9 +114,7 @@ impl Kasten {
         let mut zid_to_gid = HashMap::new();
         for zettel in &zettels {
             let id = graph.add_node_custom(zettel.clone(), |node| {
-                node.set_label(zettel.front_matter.title.to_owned());
-                let x = node.display_mut();
-                x.radius = 100.0;
+                zettel.apply_node_transform(node);
             });
             zid_to_gid.insert(zettel.id.clone(), id);
         }
@@ -186,10 +175,9 @@ impl Kasten {
                                     None => {
                                         // this zettel was created while we have watch open, lets just add
                                         // it to thegraph and the hashmap
-                                        let gid = graph.add_node_with_label(
-                                            z.clone(),
-                                            z.front_matter.title.clone(),
-                                        );
+                                        let gid = graph.add_node_custom(z.clone(), |node| {
+                                            z.apply_node_transform(node)
+                                        });
 
                                         self.zid_to_gid.insert(z.id.clone(), gid);
                                         gid
@@ -197,20 +185,9 @@ impl Kasten {
                                 }
                             };
 
-                            let x = graph
-                                .g_mut()
-                                .node_weight_mut(gid)
-                                .expect("must exist")
-                                .payload_mut();
-
-                            (*x) = z.clone();
-
-                            let x = graph
-                                .g_mut()
-                                .node_weight_mut(gid)
-                                .expect("must exist")
-                                .display_mut();
-                            x.radius = 50.0;
+                            let x = graph.g_mut().node_weight_mut(gid).expect("must exist");
+                            (*x.payload_mut()) = z.clone();
+                            z.apply_node_transform(x);
 
                             let curr_edgs = graph
                                 .g()
@@ -225,7 +202,6 @@ impl Kasten {
                             for link in z.links {
                                 let dest = self.zid_to_gid.get(&link.dest).expect("must exist");
                                 graph.add_edge(gid, *dest, link);
-                                // graph.add_edge(a, b, weight)
                             }
 
                             println!("graph: {graph:#?}");

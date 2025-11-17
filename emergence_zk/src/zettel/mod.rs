@@ -3,12 +3,11 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 
+use egui_graphs::Node;
 use pulldown_cmark::{Event, Parser, Tag as MkTag};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, TryIntoModel,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, error, info};
+use tracing::{error, info};
 
 use crate::{Link, Tag, Workspace, ZettelId, ZkResult, entities};
 
@@ -204,6 +203,12 @@ impl Zettel {
 
         write!(f, "{self}")?;
         Ok(())
+    }
+
+    pub fn apply_node_transform(&self, node: &mut Node<Zettel, Link>) {
+        node.set_label(self.front_matter.title.to_owned());
+        let x = node.display_mut();
+        x.radius = 100.0;
     }
 }
 
