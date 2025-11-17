@@ -27,7 +27,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 egui_graphs = "0.29.0"
 petgraph = {version="0.8.2", features=["stable_graph"]}
 emergence_zk = {path="../emergence_zk"}
-tokio = { version = "1.48.0", features = ["full"] }
+tokio = { version = "1.48.0" }
 egui-async = "0.2.3"
 reqwest = "0.12.24"
 notify = "8.2.0"
