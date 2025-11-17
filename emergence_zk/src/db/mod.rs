@@ -42,7 +42,7 @@ impl EmergenceDb {
         })
     }
 
-    // /// The full sync functin makes it so that all the information in the database
+    // /// The full sync function makes it so that all the information in the database
     // /// is correct up until the point in time that this function is called
     // pub async fn full_sync(&self) -> ZkResult<()> {
     //     let valid_parsed_files: Vec<_> = fs::read_dir(&self.root)?
