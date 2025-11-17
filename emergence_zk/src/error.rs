@@ -14,6 +14,4 @@ pub enum ZkError {
 
     #[error("FS Watcher Error")]
     NotifyError(#[from] notify::Error),
-
-    
 }
