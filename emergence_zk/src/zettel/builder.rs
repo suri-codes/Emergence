@@ -1,48 +1,22 @@
+use std::fs::OpenOptions;
 use std::io::Write;
-use std::{fs::OpenOptions, path::PathBuf};
 
 use chrono::Local;
-use serde::{Deserialize, Serialize};
+use sea_orm::ActiveModelTrait as _;
 
-use crate::{FrontMatter, Metadata, Tag, ZettelId, ZkResult};
+use crate::{FrontMatter, Tag, Workspace, Zettel, ZettelId, ZkResult, entities};
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
-pub struct Zettel {
-    pub path: PathBuf,
-    pub id: ZettelId,
-    pub front_matter: FrontMatter,
-    pub tags: Vec<Tag>,
-    pub content: String,
-}
-
-impl Zettel {
-    pub fn new(
-        id: ZettelId,
-        path: PathBuf,
-        front_matter: FrontMatter,
-        tags: Vec<Tag>,
-        content: String,
-    ) -> Self {
-        Self {
-            path,
-            id,
-            front_matter,
-            tags,
-            content,
-        }
-    }
-}
-
-pub struct ZettelBuilder {
+pub struct ZettelBuilder<'a> {
+    ws: &'a Workspace,
     inner: Zettel,
 }
 
-impl ZettelBuilder {
-    pub fn new(metadata: &Metadata) -> Self {
+impl<'a> ZettelBuilder<'a> {
+    pub fn new(ws: &'a Workspace) -> Self {
         let id = ZettelId::default();
 
         let zettel_path = {
-            let mut project_root = metadata.project_root.clone();
+            let mut project_root = ws.root.clone();
             project_root.push([id.as_str(), ".md"].join(""));
             project_root
         };
@@ -50,12 +24,14 @@ impl ZettelBuilder {
         let front_matter = FrontMatter::new("", Local::now().naive_local(), Vec::<String>::new());
 
         ZettelBuilder {
+            ws,
             inner: Zettel {
                 id,
                 path: zettel_path,
                 front_matter,
                 content: "".to_owned(),
                 tags: Vec::new(),
+                links: vec![],
             },
         }
     }
@@ -63,7 +39,7 @@ impl ZettelBuilder {
     // methods for mutating inner state
 
     pub fn name(&mut self, name: impl Into<String>) {
-        self.inner.front_matter.name = name.into();
+        self.inner.front_matter.title = name.into();
     }
 
     pub fn add_tag(&mut self, tag: Tag) {
@@ -76,8 +52,8 @@ impl ZettelBuilder {
 
     // methods for builder pattern
 
-    pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.inner.front_matter.name = name.into();
+    pub fn with_title(mut self, name: impl Into<String>) -> Self {
+        self.inner.front_matter.title = name.into();
         self
     }
 
@@ -92,7 +68,7 @@ impl ZettelBuilder {
         self
     }
 
-    pub fn build(mut self) -> ZkResult<Zettel> {
+    pub async fn build(mut self) -> ZkResult<Zettel> {
         let now = Local::now().naive_local();
 
         // set created_at to build time
@@ -106,6 +82,14 @@ impl ZettelBuilder {
 
         writeln!(f, "{}", self.inner.front_matter)?;
         writeln!(f, "{}", self.inner.content)?;
+
+        let am = entities::zettel::ActiveModel {
+            nanoid: sea_orm::ActiveValue::Set(self.inner.id.to_string()),
+            title: sea_orm::ActiveValue::Set(self.inner.front_matter.title.clone()),
+            ..Default::default()
+        };
+
+        am.insert(self.ws.db.as_ref()).await?;
 
         Ok(self.inner)
     }

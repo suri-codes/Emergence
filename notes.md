@@ -2,7 +2,7 @@
 Okay so there are a few things we
 have to build abstraction layers around
 
-I'd like to have a clean seperation of concerns here
+I'd like to have a clean separation of concerns here
 
 Multiple crates for different things
 with lots of interchangability being possible

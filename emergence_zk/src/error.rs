@@ -6,6 +6,12 @@ pub enum ZkError {
     #[error("File error: ")]
     FileError(#[from] io::Error),
 
-    #[error("Parse Failure")]
+    #[error("Parse Error: ")]
     ParseError(String),
+
+    #[error("Database Error: ")]
+    DbError(#[from] sea_orm::DbErr),
+
+    #[error("FS Watcher Error")]
+    NotifyError(#[from] notify::Error),
 }

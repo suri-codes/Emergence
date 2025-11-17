@@ -1,10 +1,9 @@
+use nanoid::nanoid;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
     path::{Path, PathBuf},
 };
-
-use nanoid::nanoid;
-use serde::{Deserialize, Serialize};
 
 use crate::ZkError;
 
@@ -24,7 +23,7 @@ impl ZettelId {
 
 impl Default for ZettelId {
     fn default() -> Self {
-        ZettelId(nanoid!(5, &ALPHABET))
+        ZettelId(nanoid!(7, &ALPHABET))
     }
 }
 
@@ -53,6 +52,20 @@ impl TryFrom<&Path> for ZettelId {
     type Error = ZkError;
 
     fn try_from(value: &Path) -> Result<Self, Self::Error> {
+        let extension =
+            value
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .ok_or(ZkError::ParseError(
+                    "Unable to turn file extension into string".to_owned(),
+                ))?;
+
+        if extension != "md" {
+            return Err(ZkError::ParseError(format!(
+                "Wrong extension: {extension}, expected .md"
+            )));
+        }
+
         let id: ZettelId = value
             .file_name()
             .ok_or(ZkError::ParseError("Invalid File Name!".to_owned()))?
@@ -60,6 +73,8 @@ impl TryFrom<&Path> for ZettelId {
             .ok_or(ZkError::ParseError(
                 "File Name cannot be translated into str!".to_owned(),
             ))?
+            .strip_suffix(".md")
+            .expect("we statically verify this right above")
             .into();
 
         Ok(id)
