@@ -6,18 +6,22 @@ use std::{
 };
 
 use notify::{RecursiveMode, Watcher};
-use petgraph::{
-    graph::NodeIndex,
-    prelude::{StableGraph, StableUnGraph},
-    visit::EdgeRef,
-};
+use petgraph::{Directed, prelude::NodeIndex, prelude::StableGraph};
+// use petgraph::{
+//     graph::NodeIndex,
+//     prelude::{StableGraph, StableUnGraph},
+//     visit::EdgeRef,
+// };
 use rayon::prelude::*;
 use tokio::time::Instant;
 
 use crate::{Link, Workspace, Zettel, ZettelId, ZkResult};
+use egui_graphs::Graph;
 
 // pub type ZkGraph = StableUnGraph<Arc<Zettel>, Link>;
-pub type ZkGraph = StableGraph<Zettel, Link>;
+// pub type ZkGraph = StableGraph<Zettel, Link>;
+// pub type ZkGraph = StableGraph<Zettel, Link>;
+type ZkGraph = Graph<Zettel, Link, Directed>;
 
 #[derive(Debug, Clone)]
 pub struct Kasten {
@@ -48,7 +52,10 @@ impl Kasten {
 
         fs::create_dir_all(our_folder)?;
 
-        let graph: ZkGraph = StableGraph::with_capacity(GRAPH_MAX_NODES, GRAPH_MAX_EDGES);
+        let graph: ZkGraph = ZkGraph::from(&StableGraph::with_capacity(
+            GRAPH_MAX_NODES,
+            GRAPH_MAX_EDGES,
+        ));
 
         let ws = Workspace::new(&dest).await?;
 
@@ -106,7 +113,10 @@ impl Kasten {
             )
             // .collect::<Vec<Arc<Zettel>>>();
             .collect::<Vec<Zettel>>();
-        let mut graph: ZkGraph = StableGraph::with_capacity(zettels.len(), zettels.len() * 3);
+        let mut graph: ZkGraph = ZkGraph::from(&StableGraph::with_capacity(
+            zettels.len(),
+            zettels.len() * 3,
+        ));
 
         // now we have to update the graph
 
@@ -170,11 +180,19 @@ impl Kasten {
 
                             let mut graph = self.graph.lock().unwrap();
 
-                            let x = graph.node_weight_mut(gid).expect("must exist");
+                            let x = graph
+                                .g_mut()
+                                .node_weight_mut(gid)
+                                .expect("must exist")
+                                .payload_mut();
 
                             (*x) = z.clone();
 
-                            let curr_edgs = graph.edges(gid).map(|e| e.id()).collect::<Vec<_>>();
+                            let curr_edgs = graph
+                                .g()
+                                .edges(gid)
+                                .map(|e| e.weight().id())
+                                .collect::<Vec<_>>();
 
                             for edge in curr_edgs {
                                 let _ = graph.remove_edge(edge);

@@ -1,8 +1,9 @@
 use egui::Color32;
 use egui_async::{Bind, EguiAsyncPlugin};
 use egui_graphs::Graph;
-use emergence_zk::{Kasten, Link, Zettel, ZkError};
+use emergence_zk::{Kasten, Link, Zettel, ZkError, ZkResult};
 use petgraph::{Directed, Undirected, graph::NodeIndex};
+use tokio::task::JoinHandle;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 // #[derive(serde::Deserialize, serde::Serialize)]
@@ -15,9 +16,9 @@ pub struct EmergenceApp {
     value: f32,
 
     // #[serde(skip)] // This how you opt-out of serialization of a field
-    graph: EmerGraph,
-
-    _kasten_bind: Bind<Kasten, ZkError>,
+    // graph: EmerGraph,
+    // _kasten_bind: Bind<Kasten, ZkError>,
+    kasten: Kasten,
 }
 
 // type EmerGraph = Graph<Arc<Zettel>, Link, Undirected>;
@@ -63,11 +64,12 @@ impl EmergenceApp {
         };
 
         let mut x = kasten.clone();
-        tokio::spawn(async move { x.watch().await });
+        tokio::spawn(async move {
+            let res = x.watch().await;
+            println!("{res:#?}")
+        });
 
-        let k_graph = &kasten.graph.lock().unwrap().clone();
-
-        let mut graph = EmerGraph::from(k_graph);
+        let mut graph = kasten.graph.lock().unwrap().clone();
 
         let node_ids: Vec<_> = graph
             .nodes_iter()
@@ -87,8 +89,8 @@ impl EmergenceApp {
             // Example stuff:
             label: "Hello orld!".to_owned(),
             value: 2.7,
-            graph,
-            _kasten_bind: Bind::default(),
+            kasten,
+            // _kasten_bind: Bind::default(),
         }
     }
 }
@@ -154,11 +156,13 @@ impl eframe::App for EmergenceApp {
 
             //TODO: this wont update the thing
             // let mut graph_view = egui_graphs::GraphView::<_, _, Undirected>::new(&mut self.graph);
+            //
 
+            let g = &mut *self.kasten.graph.lock().expect("should not be poisoned");
             type L =
                 egui_graphs::LayoutForceDirected<egui_graphs::FruchtermanReingoldWithCenterGravity>;
             type S = egui_graphs::FruchtermanReingoldWithCenterGravityState;
-            let mut view = egui_graphs::GraphView::<_, _, _, _, _, _, S, L>::new(&mut self.graph);
+            let mut view = egui_graphs::GraphView::<_, _, _, _, _, _, S, L>::new(g);
             ui.add(&mut view);
 
             // ui.add(&mut graph_view);

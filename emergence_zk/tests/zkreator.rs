@@ -1,6 +1,6 @@
 use std::{env::current_dir, path::PathBuf};
 
-use emergence_zk::{Kasten, ZettelBuilder, ZettelId, ZkGraph, ZkResult};
+use emergence_zk::{Kasten, ZettelBuilder, ZettelId, ZkResult};
 
 #[expect(unused)]
 pub struct ZKreator {

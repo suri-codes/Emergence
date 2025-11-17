@@ -1462,6 +1462,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "criterion",
+ "egui_graphs",
  "futures",
  "lazy_static",
  "log",
