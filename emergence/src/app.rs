@@ -1,7 +1,8 @@
 use std::{
     path::{Path, PathBuf},
     sync::{
-        mpsc::{self, SyncSender}, Arc, Mutex
+        Arc, Mutex,
+        mpsc::{self, Sender, SyncSender},
     },
     thread::{self, JoinHandle},
 };
@@ -9,7 +10,8 @@ use std::{
 use egui_async::{Bind, EguiAsyncPlugin};
 use egui_file_dialog::FileDialog;
 use emergence_zk::{Kasten, Zettel, ZettelId, ZkError, ZkResult};
-use notify::{RecursiveMode, Watcher};
+use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+use tokio::sync::mpsc::channel;
 use tracing::{error, info};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -26,9 +28,12 @@ pub struct EmergenceApp {
     // graph: EmerGraph,
     kasten_bind: Bind<Arc<Mutex<Kasten>>, ZkError>,
 
-    kasten_sender: SyncSender<Arc<Mutex<Kasten>>>,
+    kasten_sender: tokio::sync::mpsc::Sender<Arc<Mutex<Kasten>>>,
 
-    kasten_watcher_handle: std::thread::JoinHandle<()>,
+    // kasten_watcher_handle: std::thread::JoinHandle<()>,
+    kasten_watcher_handle: tokio::task::JoinHandle<()>,
+
+    kasten_sender_bind: Bind<(), ZkError>,
 
     curr_kasten_id: Option<ZettelId>,
 
@@ -81,144 +86,291 @@ impl EmergenceApp {
         // });
         //
 
-        let (tx, rx) = mpsc::sync_channel::<Arc<Mutex<Kasten>>>(5);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Arc<Mutex<Kasten>>>(15);
 
-        let kasten_watcher: JoinHandle<()> = thread::spawn(|| {
-            tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build().expect("failed to build rt").block_on(
-            
-            async move {
-                let mut current_kasten_handle: Option<
-                    tokio::task::JoinHandle<Result<(), ZkError>>,
-                > = None;
+        use notify::{Config, Event, RecommendedWatcher};
+        use tokio::sync::mpsc::{Receiver, channel};
 
-                loop {
-                    if let Ok(kasten) = rx.recv() {
-                        let k = kasten.lock().expect("should never be poisoned");
-                        info!("received kasten: {:#?}", k.id);
-                        drop(k);
-                        if let Some(old_kasten_handle) = current_kasten_handle {
-                            old_kasten_handle.abort();
-                        }
+        let kasten_watcher: tokio::task::JoinHandle<()> = tokio::spawn(async move {
+            let mut current_kasten_handle: Option<tokio::task::JoinHandle<Result<(), ZkError>>> =
+                None;
 
-                        info!("we are here");
+            loop {
+                if let Some(kasten) = rx.recv().await {
+                    let k = kasten.lock().expect("should never be poisoned");
+                    info!("received kasten: {:#?}", k.id);
+                    drop(k);
+                    if let Some(old_kasten_handle) = current_kasten_handle {
+                        old_kasten_handle.abort();
+                    }
 
-                        let k = kasten.clone();
-                        current_kasten_handle = Some(tokio::spawn(async move {
-                            info!("the handle was atleast spawned xd");
+                    info!("we are here");
 
-                            let ws = k.lock().expect("lol").ws.clone();
+                    let k = kasten.clone();
+                    current_kasten_handle = Some(tokio::spawn(async move {
+                        info!("the handle was atleast spawned xd");
 
-                            let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
+                        let ws = k.lock().expect("lol").ws.clone();
 
-                            // Use recommended_watcher() to automatically select the best implementation
-                            // for your platform. The `EventHandler` passed to this constructor can be a
-                            // closure, a `std::sync::mpsc::Sender`, a `crossbeam_channel::Sender`, or
-                            // another type the trait is implemented for.
-                            let mut watcher = notify::recommended_watcher(tx)?;
+                        // Use recommended_watcher() to automatically select the best implementation
+                        // for your platform. The `EventHandler` passed to this constructor can be a
+                        // closure, a `std::sync::mpsc::Sender`, a `crossbeam_channel::Sender`, or
+                        // another type the trait is implemented for.
+                        //
+                        // use tokio::sync::mpsc::{channel, Receiver};
+                        use notify::{Config, Event, RecommendedWatcher};
 
-                            // Add a path to be watched. All files and directories at that path and
-                            // below will be monitored for changes.
-                            watcher
-                                .watch(Path::new(&ws.root), RecursiveMode::Recursive)
-                                .expect("lol");
-                            // Block forever, printing out events as they come in
+                        let (tx, mut rx) = channel(1);
 
-                            while let Ok(res) = rx.recv() {
-                                match res {
-                                    Ok(event) => {
-                                        info!("event: {:#?}", event);
-                                        if let notify::EventKind::Modify(
-                                            notify::event::ModifyKind::Data(_),
-                                        ) = event.kind
-                                        {
-                                            for path in event.paths {
-                                                info!("we are goin through shit");
-                                                let Ok(z) = Zettel::from_path(&path, &ws).await.inspect_err(|e| {
+                        let mut watcher = RecommendedWatcher::new(
+                            move |res| tx.blocking_send(res).expect("failed to send event"),
+                            Config::default(),
+                        )?;
+
+                        // let (tx, mut rx) = mpsc::channel(100);
+                        //    let mut watcher =
+                        //        RecommendedWatcher::new(move |result: std::result::Result<Event, Error>| {
+                        //            tx.blocking_send(result).expect("Failed to send event");
+                        //        })?;
+
+                        //    watcher.watch(Path::new("."), RecursiveMode::Recursive)?;
+
+                        //    // This is a simple loop, but you may want to use more complex logic here,
+                        //    // for example to handle I/O.
+                        //    while let Some(res) = rx.recv().await {
+                        //        tokio::spawn(async move {println!("got = {:?}", res);});
+                        //    }
+
+                        //
+                        // let (mut watcher, mut rx) = async_watcher()?;
+
+                        // Add a path to be watched. All files and directories at that path and
+                        // below will be monitored for changes.
+                        watcher
+                            .watch(Path::new(&ws.root), RecursiveMode::Recursive)
+                            .expect("lol");
+                        // Block forever, printing out events as they come in
+
+                        while let Some(res) = rx.recv().await {
+                            match res {
+                                Ok(event) => {
+                                    info!("event: {:#?}", event);
+                                    if let notify::EventKind::Modify(
+                                        notify::event::ModifyKind::Data(_),
+                                    ) = event.kind
+                                    {
+                                        for path in event.paths {
+                                            info!("we are goin through shit");
+                                            let Ok(z) = Zettel::from_path(&path, &ws).await.inspect_err(|e| {
                                 error!("Unable to parse zettel from path: {path:#?}, error: {e:#?}")
                             }) else {
                                 continue;
                             };
 
-                                                info!("zettel: {z:#?}");
+                                            info!("zettel: {z:#?}");
 
-                                                let mut kasten_guard =
-                                                    k.lock().expect("should have worked");
+                                            let mut kasten_guard =
+                                                k.lock().expect("should have worked");
 
-                                                // actually this has the very real possibility of changing :grin:
-                                                let gid = {
-                                                    match kasten_guard.zid_to_gid.get(&z.id) {
-                                                        Some(gid) => *gid,
-                                                        None => {
-                                                            // this zettel was created while we have watch open, lets just add
-                                                            // it to kasten_guard.thegraph and the hashmap
-                                                            let gid =
-                                                                kasten_guard.graph.add_node_custom(
-                                                                    z.clone(),
-                                                                    |node| {
-                                                                        z.apply_node_transform(node)
-                                                                    },
-                                                                );
+                                            // actually this has the very real possibility of changing :grin:
+                                            let gid = {
+                                                match kasten_guard.zid_to_gid.get(&z.id) {
+                                                    Some(gid) => *gid,
+                                                    None => {
+                                                        // this zettel was created while we have watch open, lets just add
+                                                        // it to kasten_guard.thegraph and the hashmap
+                                                        let gid = kasten_guard
+                                                            .graph
+                                                            .add_node_custom(z.clone(), |node| {
+                                                                z.apply_node_transform(node)
+                                                            });
 
-                                                            kasten_guard
-                                                                .zid_to_gid
-                                                                .insert(z.id.clone(), gid);
-                                                            gid
-                                                        }
+                                                        kasten_guard
+                                                            .zid_to_gid
+                                                            .insert(z.id.clone(), gid);
+                                                        gid
                                                     }
-                                                };
-
-                                                let x = kasten_guard
-                                                    .graph
-                                                    .g_mut()
-                                                    .node_weight_mut(gid)
-                                                    .expect("must exist");
-                                                (*x.payload_mut()) = z.clone();
-                                                z.apply_node_transform(x);
-
-                                                let curr_edgs = kasten_guard
-                                                    .graph
-                                                    .g()
-                                                    .edges(gid)
-                                                    .map(|e| e.weight().id())
-                                                    .collect::<Vec<_>>();
-
-                                                for edge in curr_edgs {
-                                                    let _ = kasten_guard.graph.remove_edge(edge);
                                                 }
+                                            };
 
-                                                for link in z.links {
-                                                    let dest = *kasten_guard
-                                                        .zid_to_gid
-                                                        .get(&link.dest)
-                                                        .expect("must exist");
-                                                    kasten_guard.graph.add_edge(gid, dest, link);
-                                                }
+                                            let x = kasten_guard
+                                                .graph
+                                                .g_mut()
+                                                .node_weight_mut(gid)
+                                                .expect("must exist");
+                                            (*x.payload_mut()) = z.clone();
+                                            z.apply_node_transform(x);
 
-                                                info!(
-                                                    "kasten_guard.graph: {:#?} ",
-                                                    kasten_guard.graph
-                                                );
+                                            let curr_edgs = kasten_guard
+                                                .graph
+                                                .g()
+                                                .edges(gid)
+                                                .map(|e| e.weight().id())
+                                                .collect::<Vec<_>>();
+
+                                            for edge in curr_edgs {
+                                                let _ = kasten_guard.graph.remove_edge(edge);
                                             }
+
+                                            for link in z.links {
+                                                let dest = *kasten_guard
+                                                    .zid_to_gid
+                                                    .get(&link.dest)
+                                                    .expect("must exist");
+                                                kasten_guard.graph.add_edge(gid, dest, link);
+                                            }
+
+                                            info!("kasten_guard.graph: {:#?} ", kasten_guard.graph);
                                         }
                                     }
-                                    Err(e) => error!("watch error: {:#?}", e),
                                 }
+                                Err(e) => error!("watch error: {:#?}", e),
                             }
+                        }
 
-                            Ok(())
-                        }));
-                    }
+                        Ok(())
+                    }));
                 }
-            });
+            }
         });
+
+        // let kasten_watcher: JoinHandle<()> = thread::spawn(|| {
+        //     tokio::runtime::Builder::new_multi_thread()
+        //         .enable_all()
+        //         .build().expect("failed to build rt").block_on(
+
+        //     async move {
+        //         let mut current_kasten_handle: Option<
+        //             tokio::task::JoinHandle<Result<(), ZkError>>,
+        //         > = None;
+
+        //         loop {
+        //             if let Ok(kasten) = rx.recv() {
+        //                 let k = kasten.lock().expect("should never be poisoned");
+        //                 info!("received kasten: {:#?}", k.id);
+        //                 drop(k);
+        //                 if let Some(old_kasten_handle) = current_kasten_handle {
+        //                     old_kasten_handle.abort();
+        //                 }
+
+        //                 info!("we are here");
+
+        //                 let k = kasten.clone();
+        //                 current_kasten_handle = Some(tokio::spawn(async move {
+        //                     info!("the handle was atleast spawned xd");
+
+        //                     let ws = k.lock().expect("lol").ws.clone();
+
+        //                     let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
+
+        //                     // Use recommended_watcher() to automatically select the best implementation
+        //                     // for your platform. The `EventHandler` passed to this constructor can be a
+        //                     // closure, a `std::sync::mpsc::Sender`, a `crossbeam_channel::Sender`, or
+        //                     // another type the trait is implemented for.
+        //                     let mut watcher = notify::recommended_watcher(tx)?;
+
+        //                     // Add a path to be watched. All files and directories at that path and
+        //                     // below will be monitored for changes.
+        //                     watcher
+        //                         .watch(Path::new(&ws.root), RecursiveMode::Recursive)
+        //                         .expect("lol");
+        //                     // Block forever, printing out events as they come in
+
+        //                     while let Ok(res) = rx.recv() {
+        //                         match res {
+        //                             Ok(event) => {
+        //                                 info!("event: {:#?}", event);
+        //                                 if let notify::EventKind::Modify(
+        //                                     notify::event::ModifyKind::Data(_),
+        //                                 ) = event.kind
+        //                                 {
+        //                                     for path in event.paths {
+        //                                         info!("we are goin through shit");
+        //                                         let Ok(z) = Zettel::from_path(&path, &ws).await.inspect_err(|e| {
+        //                         error!("Unable to parse zettel from path: {path:#?}, error: {e:#?}")
+        //                     }) else {
+        //                         continue;
+        //                     };
+
+        //                                         info!("zettel: {z:#?}");
+
+        //                                         let mut kasten_guard =
+        //                                             k.lock().expect("should have worked");
+
+        //                                         // actually this has the very real possibility of changing :grin:
+        //                                         let gid = {
+        //                                             match kasten_guard.zid_to_gid.get(&z.id) {
+        //                                                 Some(gid) => *gid,
+        //                                                 None => {
+        //                                                     // this zettel was created while we have watch open, lets just add
+        //                                                     // it to kasten_guard.thegraph and the hashmap
+        //                                                     let gid =
+        //                                                         kasten_guard.graph.add_node_custom(
+        //                                                             z.clone(),
+        //                                                             |node| {
+        //                                                                 z.apply_node_transform(node)
+        //                                                             },
+        //                                                         );
+
+        //                                                     kasten_guard
+        //                                                         .zid_to_gid
+        //                                                         .insert(z.id.clone(), gid);
+        //                                                     gid
+        //                                                 }
+        //                                             }
+        //                                         };
+
+        //                                         let x = kasten_guard
+        //                                             .graph
+        //                                             .g_mut()
+        //                                             .node_weight_mut(gid)
+        //                                             .expect("must exist");
+        //                                         (*x.payload_mut()) = z.clone();
+        //                                         z.apply_node_transform(x);
+
+        //                                         let curr_edgs = kasten_guard
+        //                                             .graph
+        //                                             .g()
+        //                                             .edges(gid)
+        //                                             .map(|e| e.weight().id())
+        //                                             .collect::<Vec<_>>();
+
+        //                                         for edge in curr_edgs {
+        //                                             let _ = kasten_guard.graph.remove_edge(edge);
+        //                                         }
+
+        //                                         for link in z.links {
+        //                                             let dest = *kasten_guard
+        //                                                 .zid_to_gid
+        //                                                 .get(&link.dest)
+        //                                                 .expect("must exist");
+        //                                             kasten_guard.graph.add_edge(gid, dest, link);
+        //                                         }
+
+        //                                         info!(
+        //                                             "kasten_guard.graph: {:#?} ",
+        //                                             kasten_guard.graph
+        //                                         );
+        //                                     }
+        //                                 }
+        //                             }
+        //                             Err(e) => error!("watch error: {:#?}", e),
+        //                         }
+        //                     }
+
+        //                     Ok(())
+        //                 }));
+        //             }
+        //         }
+        //     });
+        // });
 
         Self {
             file_dialog: FileDialog::new(),
             picked_file: None,
             kasten_bind: Bind::default(),
             kasten_watcher_bind: Bind::default(),
+            kasten_sender_bind: Bind::default(),
             kasten_watcher_handle: kasten_watcher,
             curr_kasten_id: None,
             kasten_sender: tx,
@@ -298,9 +450,15 @@ impl eframe::App for EmergenceApp {
                     match self.curr_kasten_id {
                         Some(ref mut id) => {
                             if *id != kg.id {
-                                self.kasten_sender
-                                    .send(k.clone())
-                                    .expect("this sender queue should never be full");
+                                let sender = self.kasten_sender.clone();
+                                let k_clone = k.clone();
+                                self.kasten_sender_bind.clear();
+                                self.kasten_sender_bind.request(async move {
+                                    sender.send(k_clone).await.expect("lol");
+                                    Ok(())
+                                });
+
+                                // .expect("this sender queue should never be full");
 
                                 info!("sending kasten to watcher thread: {:#?}", kg.id);
                                 self.curr_kasten_id = Some(kg.id.clone());
@@ -308,9 +466,13 @@ impl eframe::App for EmergenceApp {
                         }
                         None => {
                             self.curr_kasten_id = Some(kg.id.clone());
-                            self.kasten_sender
-                                .send(k.clone())
-                                .expect("this sender queue should never be full");
+                            let sender = self.kasten_sender.clone();
+                            let k_clone = k.clone();
+                            self.kasten_sender_bind.clear();
+                            self.kasten_sender_bind.request(async move {
+                                sender.send(k_clone).await.expect("lol");
+                                Ok(())
+                            });
                         }
                     };
 
