@@ -27,6 +27,7 @@ pub struct Kasten {
     pub graph: ZkGraph,
     pub ws: Workspace,
     pub zid_to_gid: HashMap<ZettelId, NodeIndex>,
+    pub most_recently_edited: Option<NodeIndex>,
 }
 
 pub type KastenHandle = Arc<Mutex<Kasten>>;
@@ -72,6 +73,7 @@ impl Kasten {
             name: Self::name_from_path_buf(dest),
             ws,
             zid_to_gid: HashMap::new(),
+            most_recently_edited: None,
         };
 
         Ok(me)
@@ -155,6 +157,7 @@ impl Kasten {
             graph,
             ws,
             zid_to_gid,
+            most_recently_edited: None,
         };
 
         let end = start.elapsed();
@@ -292,6 +295,8 @@ impl Kasten {
                                 let node = kasten_guard.graph.node_mut(gid).expect("must exist");
                                 z.apply_node_transform(node);
                                 *node.payload_mut() = z;
+
+                                kasten_guard.most_recently_edited = Some(gid)
                             }
                         }
 

@@ -1,5 +1,6 @@
 use egui::{Color32, RichText};
 use egui_async::StateWithData::*;
+use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -88,6 +89,36 @@ impl eframe::App for EmergenceApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // this is for the kasten bind thingy
         ctx.plugin_or_default::<EguiAsyncPlugin>();
+
+        egui::SidePanel::left("left_panel")
+            .resizable(true)
+            //NOTE: these are some bullshit values lol
+            .default_width(1500.0)
+            .width_range(80.0..=1000.0)
+            .show(ctx, |ui| {
+                match self.kasten_bind.state() {
+                    Finished(k_handle) => {
+                        let k = k_handle.lock().expect("must not be poisoned");
+                        if let Some(recently_edited) = k.most_recently_edited {
+                            let zettel =
+                                k.graph.node(recently_edited).expect("must exist").payload();
+
+                            ui.vertical_centered(|ui| {
+                                ui.heading(zettel.front_matter.title.clone());
+                            });
+                            egui::ScrollArea::vertical().show(ui, |ui| {
+                                let mut cache = CommonMarkCache::default();
+                                CommonMarkViewer::new().show(ui, &mut cache, &zettel.content);
+                            });
+                        } else {
+                            egui::ScrollArea::vertical().show(ui, |_| {});
+                        };
+                    }
+                    _ => {
+                        ui.spinner();
+                    }
+                };
+            });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
