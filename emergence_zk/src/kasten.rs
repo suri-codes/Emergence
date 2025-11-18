@@ -195,8 +195,17 @@ impl Kasten {
                         | EventKind::Modify(ModifyKind::Name(_)) => {
                             // this is the path that was removed
                             for path in event.paths {
-                                let Ok(id) = ZettelId::try_from(path) else {
-                                    continue;
+                                let id = {
+                                    // this will be true if the path really doesn't exist -> meaning it got deleted
+                                    if path.canonicalize().is_err() {
+                                        match ZettelId::try_from(path) {
+                                            Ok(id) => id,
+                                            Err(_) => continue,
+                                        }
+                                    } else {
+                                        // file still exists
+                                        continue;
+                                    }
                                 };
 
                                 info!("deleting zettel: {id:#?}");
@@ -236,6 +245,7 @@ impl Kasten {
                                     match kasten_guard.zid_to_gid.get(&z.id) {
                                         Some(gid) => *gid,
                                         None => {
+                                            info!("Zettel created while watch open!: {:#?}", z.id);
                                             // this zettel was created while we have watch open, lets just add
                                             // it to kasten_guard.thegraph and the hashmap
                                             let gid = kasten_guard
