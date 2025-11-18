@@ -282,12 +282,16 @@ impl Kasten {
                                 // swap out the zettel with the one we parsed
                                 // let x = kasten_guard.graph.node_mut(gid).expect("must exist");
                                 // *x.payload_mut() = z;
-                                let x = kasten_guard
-                                    .graph
-                                    .g_mut()
-                                    .node_weight_mut(gid)
-                                    .expect("must exist");
-                                *x.payload_mut() = z;
+                                // let x = kasten_guard
+                                //     .graph
+                                //     .g_mut()
+                                //     .node_weight_mut(gid)
+                                //     .expect("must exist");
+                                // *x.payload_mut() = z;
+
+                                let node = kasten_guard.graph.node_mut(gid).expect("must exist");
+                                z.apply_node_transform(node);
+                                *node.payload_mut() = z;
                             }
                         }
 
