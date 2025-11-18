@@ -221,12 +221,6 @@ impl Zettel {
 
     pub fn apply_node_transform(&self, node: &mut Node<Zettel, Link>) {
         node.set_label(self.front_matter.title.to_owned());
-        let x = rand::random_range(0.0..=100.0);
-
-        let y = rand::random_range(0.0..=100.0);
-
-        node.set_location(emath::Pos2 { x, y });
-
         let disp = node.display_mut();
         disp.radius = 100.0;
     }

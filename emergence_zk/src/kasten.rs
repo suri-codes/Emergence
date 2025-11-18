@@ -119,6 +119,12 @@ impl Kasten {
         for zettel in &zettels {
             let id = graph.add_node_custom(zettel.clone(), |node| {
                 zettel.apply_node_transform(node);
+
+                let x = rand::random_range(0.0..=100.0);
+
+                let y = rand::random_range(0.0..=100.0);
+
+                node.set_location(emath::Pos2 { x, y });
             });
             zid_to_gid.insert(zettel.id.clone(), id);
         }
