@@ -9,6 +9,7 @@ use notify::{RecursiveMode, Watcher};
 use petgraph::{Directed, prelude::NodeIndex, prelude::StableGraph};
 use rayon::prelude::*;
 use tokio::time::Instant;
+use tracing::{error, info};
 
 use crate::{Link, Workspace, Zettel, ZettelId, ZkResult};
 use egui_graphs::Graph;
@@ -17,8 +18,8 @@ pub type ZkGraph = Graph<Zettel, Link, Directed>;
 
 #[derive(Debug, Clone)]
 pub struct Kasten {
-    pub graph: Arc<Mutex<ZkGraph>>,
-
+    pub id: ZettelId,
+    pub graph: ZkGraph,
     pub ws: Workspace,
     pub zid_to_gid: HashMap<ZettelId, NodeIndex>,
 }
@@ -51,9 +52,12 @@ impl Kasten {
 
         let ws = Workspace::new(&dest).await?;
 
+        let id = ZettelId::default();
         // okay now we have a new thingy
         let me = Self {
-            graph: Arc::new(Mutex::new(graph)),
+            id,
+            graph,
+
             ws,
             zid_to_gid: HashMap::new(),
         };
@@ -127,8 +131,11 @@ impl Kasten {
             }
         }
 
+        info!("graph: {graph:#?}");
+
         let kasten = Kasten {
-            graph: Arc::new(Mutex::new(graph)),
+            id: ZettelId::default(),
+            graph,
             ws,
             zid_to_gid,
         };
@@ -157,17 +164,20 @@ impl Kasten {
         while let Ok(res) = rx.recv() {
             match res {
                 Ok(event) => {
-                    println!("event: {:#?}", event);
+                    info!("event: {:#?}", event);
                     if let notify::EventKind::Modify(notify::event::ModifyKind::Data(_)) =
                         event.kind
                     {
                         for path in event.paths {
-                            let Ok(z) = Zettel::from_path(path, &self.ws).await else {
+                            info!("we are goin through shit");
+                            let Ok(z) = Zettel::from_path(&path, &self.ws).await.inspect_err(|e| {
+                                error!("Unable to parse zettel from path: {path:#?}, error: {e:#?}")
+                            }) else {
                                 continue;
                             };
 
-                            println!("zettel: {z:#?}");
-                            let mut graph = self.graph.lock().unwrap();
+                            info!("zettel: {z:#?}");
+                            let mut graph = &mut self.graph;
                             // actually this has the very real possibility of changing :grin:
                             let gid = {
                                 match self.zid_to_gid.get(&z.id) {
@@ -204,12 +214,12 @@ impl Kasten {
                                 graph.add_edge(gid, *dest, link);
                             }
 
-                            println!("graph: {graph:#?}");
+                            info!("graph: {graph:#?}");
                             drop(graph)
                         }
                     }
                 }
-                Err(e) => println!("watch error: {:#?}", e),
+                Err(e) => error!("watch error: {:#?}", e),
             }
         }
 

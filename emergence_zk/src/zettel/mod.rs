@@ -61,10 +61,24 @@ impl Zettel {
 
         for event in parsed {
             if let Event::Start(MkTag::Link { dest_url, .. }) = event {
-                // println!("Found dest_url: {dest_url:#?}");
+                info!("Found dest_url: {dest_url:#?}");
+
                 let dest_path = {
+                    // remove leading "./"
+                    let without_prefix = dest_url.strip_prefix("./").unwrap_or(&dest_url);
+
+                    // remove "#" and everything after it
+                    let without_anchor = without_prefix.split('#').next().unwrap();
+
+                    // add .md if not present
+                    let normalized = if without_anchor.ends_with(".md") {
+                        without_anchor.to_string()
+                    } else {
+                        format!("{}.md", without_anchor)
+                    };
+
                     let mut tmp_root = ws.root.clone();
-                    tmp_root.push(dest_url.into_string());
+                    tmp_root.push(normalized);
                     tmp_root
                 };
                 // simplest way to validate that the path exists
@@ -207,8 +221,14 @@ impl Zettel {
 
     pub fn apply_node_transform(&self, node: &mut Node<Zettel, Link>) {
         node.set_label(self.front_matter.title.to_owned());
-        let x = node.display_mut();
-        x.radius = 100.0;
+        let x = rand::random_range(0.0..=100.0);
+
+        let y = rand::random_range(0.0..=100.0);
+
+        node.set_location(emath::Pos2 { x, y });
+
+        let disp = node.display_mut();
+        disp.radius = 100.0;
     }
 }
 

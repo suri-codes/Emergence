@@ -2,10 +2,40 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use emergence::EmergenceApp;
+use tracing_subscriber::{EnvFilter, Layer};
 
 #[tokio::main]
 async fn main() -> eframe::Result {
-    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+    // console_subscriber::init();
+    // tracing_subscriber::fmt()
+    //     .with_env_filter(
+    //         EnvFilter::try_from_default_env()
+    //             .unwrap_or_else(|_| EnvFilter::new("info"))
+    //             .add_directive("sqlx=off".parse().unwrap())
+    //             .add_directive("tokio=trace".parse().unwrap())
+    //             .add_directive("runtime=trace".parse().unwrap()),
+    //     )
+    //     .with_target(true)
+    //     .with_line_number(true)
+    //     .with_file(true)
+    //     .init();
+    //
+    use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+
+    tracing_subscriber::registry()
+        .with(console_subscriber::spawn())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(true)
+                .with_line_number(true)
+                .with_file(true)
+                .with_filter(
+                    EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| EnvFilter::new("info"))
+                        .add_directive("sqlx=off".parse().unwrap()),
+                ),
+        )
+        .init();
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

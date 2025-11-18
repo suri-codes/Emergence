@@ -1,20 +1,38 @@
-use egui_async::EguiAsyncPlugin;
-use emergence_zk::Kasten;
+use std::{
+    path::{Path, PathBuf},
+    sync::{
+        mpsc::{self, SyncSender}, Arc, Mutex
+    },
+    thread::{self, JoinHandle},
+};
+
+use egui_async::{Bind, EguiAsyncPlugin};
+use egui_file_dialog::FileDialog;
+use emergence_zk::{Kasten, Zettel, ZettelId, ZkError, ZkResult};
+use notify::{RecursiveMode, Watcher};
+use tracing::{error, info};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 // #[derive(serde::Deserialize, serde::Serialize)]
 // #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct EmergenceApp {
     // Example stuff:
-    label: String,
 
     // #[serde(skip)] // This how you opt-out of serialization of a field
-    value: f32,
+    file_dialog: FileDialog,
+    picked_file: Option<PathBuf>,
 
     // #[serde(skip)] // This how you opt-out of serialization of a field
     // graph: EmerGraph,
-    // _kasten_bind: Bind<Kasten, ZkError>,
-    kasten: Kasten,
+    kasten_bind: Bind<Arc<Mutex<Kasten>>, ZkError>,
+
+    kasten_sender: SyncSender<Arc<Mutex<Kasten>>>,
+
+    kasten_watcher_handle: std::thread::JoinHandle<()>,
+
+    curr_kasten_id: Option<ZettelId>,
+
+    kasten_watcher_bind: Bind<(), ZkError>, // kasten: Kasten,
 }
 
 impl EmergenceApp {
@@ -41,33 +59,169 @@ impl EmergenceApp {
         // });
 
         // Overhead: ~negligible
-        let (tx, mut rx) = tokio::sync::oneshot::channel();
+        // let (tx, mut rx) = tokio::sync::oneshot::channel();
 
-        tokio::spawn(async move {
-            let kasten = Kasten::parse("../personal_ezk").await.unwrap();
-            tx.send(kasten).unwrap();
-        });
+        // tokio::spawn(async move {
+        //     let kasten = Kasten::parse("./ZettelKasten").await.unwrap();
+        //     tx.send(kasten).unwrap();
+        // });
 
-        let kasten = loop {
-            match rx.try_recv() {
-                Ok(k) => break k,
+        // let kasten = loop {
+        //     match rx.try_recv() {
+        //         Ok(k) => break k,
 
-                _ => continue,
-            };
-        };
+        //         _ => continue,
+        //     };
+        // };
 
-        let mut x = kasten.clone();
-        tokio::spawn(async move {
-            let res = x.watch().await;
-            println!("{res:#?}")
+        // let mut x = kasten.clone();
+        // tokio::spawn(async move {
+        //     let res = x.watch().await;
+        //     error!("{res:#?}")
+        // });
+        //
+
+        let (tx, rx) = mpsc::sync_channel::<Arc<Mutex<Kasten>>>(5);
+
+        let kasten_watcher: JoinHandle<()> = thread::spawn(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build().expect("failed to build rt").block_on(
+            
+            async move {
+                let mut current_kasten_handle: Option<
+                    tokio::task::JoinHandle<Result<(), ZkError>>,
+                > = None;
+
+                loop {
+                    if let Ok(kasten) = rx.recv() {
+                        let k = kasten.lock().expect("should never be poisoned");
+                        info!("received kasten: {:#?}", k.id);
+                        drop(k);
+                        if let Some(old_kasten_handle) = current_kasten_handle {
+                            old_kasten_handle.abort();
+                        }
+
+                        info!("we are here");
+
+                        let k = kasten.clone();
+                        current_kasten_handle = Some(tokio::spawn(async move {
+                            info!("the handle was atleast spawned xd");
+
+                            let ws = k.lock().expect("lol").ws.clone();
+
+                            let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
+
+                            // Use recommended_watcher() to automatically select the best implementation
+                            // for your platform. The `EventHandler` passed to this constructor can be a
+                            // closure, a `std::sync::mpsc::Sender`, a `crossbeam_channel::Sender`, or
+                            // another type the trait is implemented for.
+                            let mut watcher = notify::recommended_watcher(tx)?;
+
+                            // Add a path to be watched. All files and directories at that path and
+                            // below will be monitored for changes.
+                            watcher
+                                .watch(Path::new(&ws.root), RecursiveMode::Recursive)
+                                .expect("lol");
+                            // Block forever, printing out events as they come in
+
+                            while let Ok(res) = rx.recv() {
+                                match res {
+                                    Ok(event) => {
+                                        info!("event: {:#?}", event);
+                                        if let notify::EventKind::Modify(
+                                            notify::event::ModifyKind::Data(_),
+                                        ) = event.kind
+                                        {
+                                            for path in event.paths {
+                                                info!("we are goin through shit");
+                                                let Ok(z) = Zettel::from_path(&path, &ws).await.inspect_err(|e| {
+                                error!("Unable to parse zettel from path: {path:#?}, error: {e:#?}")
+                            }) else {
+                                continue;
+                            };
+
+                                                info!("zettel: {z:#?}");
+
+                                                let mut kasten_guard =
+                                                    k.lock().expect("should have worked");
+
+                                                // actually this has the very real possibility of changing :grin:
+                                                let gid = {
+                                                    match kasten_guard.zid_to_gid.get(&z.id) {
+                                                        Some(gid) => *gid,
+                                                        None => {
+                                                            // this zettel was created while we have watch open, lets just add
+                                                            // it to kasten_guard.thegraph and the hashmap
+                                                            let gid =
+                                                                kasten_guard.graph.add_node_custom(
+                                                                    z.clone(),
+                                                                    |node| {
+                                                                        z.apply_node_transform(node)
+                                                                    },
+                                                                );
+
+                                                            kasten_guard
+                                                                .zid_to_gid
+                                                                .insert(z.id.clone(), gid);
+                                                            gid
+                                                        }
+                                                    }
+                                                };
+
+                                                let x = kasten_guard
+                                                    .graph
+                                                    .g_mut()
+                                                    .node_weight_mut(gid)
+                                                    .expect("must exist");
+                                                (*x.payload_mut()) = z.clone();
+                                                z.apply_node_transform(x);
+
+                                                let curr_edgs = kasten_guard
+                                                    .graph
+                                                    .g()
+                                                    .edges(gid)
+                                                    .map(|e| e.weight().id())
+                                                    .collect::<Vec<_>>();
+
+                                                for edge in curr_edgs {
+                                                    let _ = kasten_guard.graph.remove_edge(edge);
+                                                }
+
+                                                for link in z.links {
+                                                    let dest = *kasten_guard
+                                                        .zid_to_gid
+                                                        .get(&link.dest)
+                                                        .expect("must exist");
+                                                    kasten_guard.graph.add_edge(gid, dest, link);
+                                                }
+
+                                                info!(
+                                                    "kasten_guard.graph: {:#?} ",
+                                                    kasten_guard.graph
+                                                );
+                                            }
+                                        }
+                                    }
+                                    Err(e) => error!("watch error: {:#?}", e),
+                                }
+                            }
+
+                            Ok(())
+                        }));
+                    }
+                }
+            });
         });
 
         Self {
-            // Example stuff:
-            label: "Hello orld!".to_owned(),
-            value: 2.7,
-            kasten,
-            // _kasten_bind: Bind::default(),
+            file_dialog: FileDialog::new(),
+            picked_file: None,
+            kasten_bind: Bind::default(),
+            kasten_watcher_bind: Bind::default(),
+            kasten_watcher_handle: kasten_watcher,
+            curr_kasten_id: None,
+            kasten_sender: tx,
         }
     }
 }
@@ -87,62 +241,102 @@ impl eframe::App for EmergenceApp {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
 
-            egui::MenuBar::new().ui(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                let is_web = cfg!(target_arch = "wasm32");
-                if !is_web {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                    ui.add_space(16.0);
-                }
+            if ui.button("Pick file").clicked() {
+                // Open the file dialog to pick a file.
+                self.file_dialog.pick_directory();
+            }
 
-                egui::widgets::global_theme_preference_buttons(ui);
-            });
+            ui.label(format!("Picked directory: {:?}", self.picked_file));
+
+            // Update the dialog
+            self.file_dialog.update(ctx);
+
+            // Check if the user picked a file.
+            if let Some(path) = self.file_dialog.take_picked() {
+                self.picked_file = Some(path.to_path_buf());
+                self.kasten_bind.clear();
+                self.kasten_bind
+                    .request(async { Kasten::parse(path).await.map(|k| Arc::new(Mutex::new(k))) });
+            }
+
+            //     egui::MenuBar::new().ui(ui, |ui| {
+            //         // NOTE: no File->Quit on web pages!
+            //         let is_web = cfg!(target_arch = "wasm32");
+            //         if !is_web {
+            //             ui.menu_button("File", |ui| {
+            //                 if ui.button("Quit").clicked() {
+            //                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            //                 }
+            //             });
+            //             ui.add_space(16.0);
+            //         }
+
+            //         egui::widgets::global_theme_preference_buttons(ui);
+            //     });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
+            ui.heading("Emergence");
 
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
-            });
+            // ui.horizontal(|ui| {
+            //     ui.label("Write something: ");
+            //     ui.text_edit_singleline(&mut self.label);
+            // });
 
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
-            }
+            // ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
+            // if ui.button("Increment").clicked() {
+            //     self.value += 1.0;
+            // }
 
-            ui.separator();
-
-            // this the really crazy graph view
-            // type L = LayoutForceDirected<FruchtermanReingold>;
-            // type S = FruchtermanReingoldState;
-            // let mut graph_view =
-            //     egui_graphs::GraphView::<_, _, _, _, _, _, S, L>::new(&mut self.graph);
-            // self.kasten_bind.request(|| async {
-            //     self.kasten_bind.
-
-            // }());
-
-            // if self.kasten_bind.is_idle() {}
-
-            //TODO: this wont update the thing
-            // let mut graph_view = egui_graphs::GraphView::<_, _, Undirected>::new(&mut self.graph);
+            // ui.separator();
             //
 
-            let g = &mut *self.kasten.graph.lock().expect("should not be poisoned");
-            type L =
-                egui_graphs::LayoutForceDirected<egui_graphs::FruchtermanReingoldWithCenterGravity>;
-            type S = egui_graphs::FruchtermanReingoldWithCenterGravityState;
-            let mut view = egui_graphs::GraphView::<_, _, _, _, _, _, S, L>::new(g);
-            ui.add(&mut view);
+            match self.kasten_bind.read_mut() {
+                Some(Ok(k)) => {
+                    let mut kg = k.lock().expect("should never be poisoned");
+                    match self.curr_kasten_id {
+                        Some(ref mut id) => {
+                            if *id != kg.id {
+                                self.kasten_sender
+                                    .send(k.clone())
+                                    .expect("this sender queue should never be full");
 
-            // ui.add(&mut graph_view);
+                                info!("sending kasten to watcher thread: {:#?}", kg.id);
+                                self.curr_kasten_id = Some(kg.id.clone());
+                            }
+                        }
+                        None => {
+                            self.curr_kasten_id = Some(kg.id.clone());
+                            self.kasten_sender
+                                .send(k.clone())
+                                .expect("this sender queue should never be full");
+                        }
+                    };
+
+                    let mut x = k.clone();
+
+                    // self.kasten_watcher_bind
+                    //     .request(async move { x.watch().await });
+
+                    let g = &mut kg.graph;
+
+                    type L = egui_graphs::LayoutForceDirected<
+                        egui_graphs::FruchtermanReingoldWithCenterGravity,
+                    >;
+                    type S = egui_graphs::FruchtermanReingoldWithCenterGravityState;
+                    let mut view = egui_graphs::GraphView::<_, _, _, _, _, _, S, L>::new(g);
+                    ui.add(&mut view);
+                }
+
+                Some(Err(e)) => {
+                    ui.label(format!("error with selecting a ZettelKasten: {:?}", e));
+                }
+
+                None => {
+                    ui.label("please choose a zettelkasten".to_string());
+                }
+            }
 
             ui.separator();
 
