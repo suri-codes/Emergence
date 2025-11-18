@@ -2,14 +2,18 @@ use std::{
     collections::HashMap,
     fs::{self},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, mpsc},
+    sync::{Arc, Mutex},
 };
 
+use notify::{
+    Config, EventKind, RecommendedWatcher,
+    event::{ModifyKind, RemoveKind},
+};
 use notify::{RecursiveMode, Watcher};
 use petgraph::{Directed, prelude::NodeIndex, prelude::StableGraph};
 use rayon::prelude::*;
-use tokio::time::Instant;
-use tracing::{error, info};
+use tokio::{sync::mpsc::channel, time::Instant};
+use tracing::{error, info, warn};
 
 use crate::{Link, Workspace, Zettel, ZettelId, ZkResult};
 use egui_graphs::Graph;
@@ -19,10 +23,13 @@ pub type ZkGraph = Graph<Zettel, Link, Directed>;
 #[derive(Debug, Clone)]
 pub struct Kasten {
     pub id: ZettelId,
+    pub name: String,
     pub graph: ZkGraph,
     pub ws: Workspace,
     pub zid_to_gid: HashMap<ZettelId, NodeIndex>,
 }
+
+pub type KastenHandle = Arc<Mutex<Kasten>>;
 
 /// maximum number of nodes in our graph, setting at this arbitrary number because im not sure
 /// if the graph type has the capability to scale with adding more nodes
@@ -31,6 +38,12 @@ const GRAPH_MAX_NODES: usize = 128;
 const GRAPH_MAX_EDGES: usize = GRAPH_MAX_NODES * 3;
 
 impl Kasten {
+    fn name_from_path_buf(path: PathBuf) -> String {
+        path.file_name()
+            .map(|os_str| os_str.to_string_lossy().into_owned())
+            .unwrap_or("ZettleKasten".to_owned())
+    }
+
     /// Creates a new kasten at the provided `dest`
     ///
     /// # Errors
@@ -51,13 +64,12 @@ impl Kasten {
         ));
 
         let ws = Workspace::new(&dest).await?;
-
         let id = ZettelId::default();
         // okay now we have a new thingy
         let me = Self {
             id,
             graph,
-
+            name: Self::name_from_path_buf(dest),
             ws,
             zid_to_gid: HashMap::new(),
         };
@@ -121,9 +133,7 @@ impl Kasten {
                 zettel.apply_node_transform(node);
 
                 let x = rand::random_range(0.0..=100.0);
-
                 let y = rand::random_range(0.0..=100.0);
-
                 node.set_location(emath::Pos2 { x, y });
             });
             zid_to_gid.insert(zettel.id.clone(), id);
@@ -141,6 +151,7 @@ impl Kasten {
 
         let kasten = Kasten {
             id: ZettelId::default(),
+            name: Self::name_from_path_buf(root),
             graph,
             ws,
             zid_to_gid,
@@ -153,76 +164,114 @@ impl Kasten {
         Ok(kasten)
     }
 
-    pub async fn watch(&mut self) -> ZkResult<()> {
-        let (tx, rx) = mpsc::channel::<notify::Result<notify::Event>>();
+    /// NOTE: This function will block forever
+    /// Will watch the underlying folder and apply any file changes to the `ZKGraph` of this `Kasten`
+    pub async fn watch(k_handle: KastenHandle) -> ZkResult<()> {
+        info!(
+            "watching kasten: {:#?}",
+            k_handle.lock().expect("should never be poisoned").id
+        );
 
-        // Use recommended_watcher() to automatically select the best implementation
-        // for your platform. The `EventHandler` passed to this constructor can be a
-        // closure, a `std::sync::mpsc::Sender`, a `crossbeam_channel::Sender`, or
-        // another type the trait is implemented for.
-        let mut watcher = notify::recommended_watcher(tx)?;
+        let ws = k_handle.lock().expect("lol").ws.clone();
+        let (tx, mut rx) = channel(1);
 
-        // Add a path to be watched. All files and directories at that path and
-        // below will be monitored for changes.
-        watcher.watch(Path::new(&self.ws.root), RecursiveMode::Recursive)?;
-        // Block forever, printing out events as they come in
+        let mut watcher = RecommendedWatcher::new(
+            move |res| tx.blocking_send(res).expect("failed to send event"),
+            Config::default(),
+        )?;
 
-        while let Ok(res) = rx.recv() {
+        watcher
+            .watch(Path::new(&ws.root), RecursiveMode::Recursive)
+            .expect("unable to start watching");
+
+        while let Some(res) = rx.recv().await {
             match res {
                 Ok(event) => {
-                    info!("event: {:#?}", event);
-                    if let notify::EventKind::Modify(notify::event::ModifyKind::Data(_)) =
-                        event.kind
-                    {
-                        for path in event.paths {
-                            info!("we are goin through shit");
-                            let Ok(z) = Zettel::from_path(&path, &self.ws).await.inspect_err(|e| {
-                                error!("Unable to parse zettel from path: {path:#?}, error: {e:#?}")
-                            }) else {
-                                continue;
-                            };
+                    info!("fs event: {:#?}", event);
 
-                            info!("zettel: {z:#?}");
-                            let mut graph = &mut self.graph;
-                            // actually this has the very real possibility of changing :grin:
-                            let gid = {
-                                match self.zid_to_gid.get(&z.id) {
-                                    Some(gid) => *gid,
-                                    None => {
-                                        // this zettel was created while we have watch open, lets just add
-                                        // it to thegraph and the hashmap
-                                        let gid = graph.add_node_custom(z.clone(), |node| {
-                                            z.apply_node_transform(node)
-                                        });
+                    match event.kind {
+                        // a file was deleted
+                        EventKind::Remove(RemoveKind::Any | RemoveKind::File)
+                        | EventKind::Modify(ModifyKind::Name(_)) => {
+                            // this is the path that was removed
+                            for path in event.paths {
+                                let Ok(id) = ZettelId::try_from(path) else {
+                                    continue;
+                                };
 
-                                        self.zid_to_gid.insert(z.id.clone(), gid);
-                                        gid
-                                    }
-                                }
-                            };
+                                info!("deleting zettel: {id:#?}");
 
-                            let x = graph.g_mut().node_weight_mut(gid).expect("must exist");
-                            (*x.payload_mut()) = z.clone();
-                            z.apply_node_transform(x);
+                                let mut kasten_guard =
+                                    k_handle.lock().expect("lock must not be poisoned");
 
-                            let curr_edgs = graph
-                                .g()
-                                .edges(gid)
-                                .map(|e| e.weight().id())
-                                .collect::<Vec<_>>();
+                                let Some(g_id) = kasten_guard.zid_to_gid.get(&id).copied() else {
+                                    warn!(
+                                        "the id we were trying to delete didnt exist inside zid_to_gid, skipping"
+                                    );
 
-                            for edge in curr_edgs {
-                                let _ = graph.remove_edge(edge);
+                                    continue;
+                                };
+
+                                // remove from graph
+                                let _ = kasten_guard.graph.remove_node(g_id);
+                                kasten_guard.zid_to_gid.remove(&id);
                             }
-
-                            for link in z.links {
-                                let dest = self.zid_to_gid.get(&link.dest).expect("must exist");
-                                graph.add_edge(gid, *dest, link);
-                            }
-
-                            info!("graph: {graph:#?}");
-                            drop(graph)
                         }
+                        EventKind::Modify(ModifyKind::Data(_)) => {
+                            for path in event.paths {
+                                let Ok(z) = Zettel::from_path(&path, &ws).await.inspect_err(|e| {
+                                    error!(
+                                        "Unable to parse zettel from path: {path:#?}, error: {e:#?}"
+                                    )
+                                }) else {
+                                    continue;
+                                };
+
+                                info!("Processing content change in zettel: {z:#?}");
+
+                                let mut kasten_guard =
+                                    k_handle.lock().expect("lock must not be poisoned");
+
+                                let gid = {
+                                    match kasten_guard.zid_to_gid.get(&z.id) {
+                                        Some(gid) => *gid,
+                                        None => {
+                                            // this zettel was created while we have watch open, lets just add
+                                            // it to kasten_guard.thegraph and the hashmap
+                                            let gid = kasten_guard
+                                                .graph
+                                                .add_node_custom(z.clone(), |node| {
+                                                    z.apply_node_transform(node)
+                                                });
+
+                                            kasten_guard.zid_to_gid.insert(z.id.clone(), gid);
+                                            gid
+                                        }
+                                    }
+                                };
+
+                                let curr_edgs = kasten_guard
+                                    .graph
+                                    .g()
+                                    .edges(gid)
+                                    .map(|e| e.weight().id())
+                                    .collect::<Vec<_>>();
+
+                                for edge in curr_edgs {
+                                    let _ = kasten_guard.graph.remove_edge(edge);
+                                }
+
+                                for link in z.links {
+                                    let dest = *kasten_guard
+                                        .zid_to_gid
+                                        .get(&link.dest)
+                                        .expect("must exist");
+                                    kasten_guard.graph.add_edge(gid, dest, link);
+                                }
+                            }
+                        }
+
+                        _ => {}
                     }
                 }
                 Err(e) => error!("watch error: {:#?}", e),
