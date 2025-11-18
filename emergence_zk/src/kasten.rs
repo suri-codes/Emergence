@@ -271,13 +271,23 @@ impl Kasten {
                                     let _ = kasten_guard.graph.remove_edge(edge);
                                 }
 
-                                for link in z.links {
+                                for link in z.links.clone() {
                                     let dest = *kasten_guard
                                         .zid_to_gid
                                         .get(&link.dest)
                                         .expect("must exist");
                                     kasten_guard.graph.add_edge(gid, dest, link);
                                 }
+
+                                // swap out the zettel with the one we parsed
+                                // let x = kasten_guard.graph.node_mut(gid).expect("must exist");
+                                // *x.payload_mut() = z;
+                                let x = kasten_guard
+                                    .graph
+                                    .g_mut()
+                                    .node_weight_mut(gid)
+                                    .expect("must exist");
+                                *x.payload_mut() = z;
                             }
                         }
 
